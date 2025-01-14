@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>聊天室</title>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dayjs/1.11.13/dayjs.min.js"
+        integrity="sha512-FwNWaxyfy2XlEINoSnZh1JQ5TRRtGow0D6XcmAWmYCRgvqOUTnzCxPc9uF35u5ZEpirk1uhlPVA19tflhvnW1g=="
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+    <!-- 引入 Bootstrap CSS -->
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <!-- Lightbox2 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/lightbox2@2.11.3/dist/css/lightbox.min.css" rel="stylesheet">
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            display: flex;
+            height: 10vh;
+            /* 設置為 100% 的視口高度 */
+            overflow: hidden;
+            /* 隱藏整個視口的滾動條 */
+        }
+
+        #messages2 {
+            border: 1px solid #ccc;
+            padding: 5px;
+            white-space: pre-wrap;
+            /* 保留換行符號 */
+            word-wrap: break-word;
+            /* 使長單詞換行 */
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            /* 確保最新消息在底部 */
+            height: calc(100vh - 170px);
+            /* 計算高度以適應底部表單 */
+            overflow-y: auto;
+            /* 顯示滾動條 */
+        }
+
+        #messages {
+            border: 1px solid #ccc;
+            padding: 5px;
+            white-space: pre-wrap;
+            /* 保留換行符號 */
+            word-wrap: break-word;
+            /* 使長單詞換行 */
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            /* 確保最新消息在最底部。 */
+            height: calc(100vh - 170px);
+            /* 計算高度以適應底部表單 */
+            overflow-y: auto;
+            /* 顯示滾動條 */
+        }
+
+        .message {
+            padding: 10px;
+            margin-bottom: 5px;
+            border-radius: 5px;
+            /* 加入邊角圓滑效果 */
+        }
+
+        .message:nth-child(odd) {
+            background-color: #f0f0f0;
+            /* 偶數消息底色 */
+        }
+
+        .message:nth-child(even) {
+            background-color: #d9edf7;
+            /* 奇數消息底色 */
+        }
+
+        .emoji-picker {
+            display: none;
+            /* 初始隱藏 */
+            position: absolute;
+            background: white;
+            border: 1px solid #ccc;
+            padding: 10px;
+            z-index: 1000;
+        }
+
+        .emoji {
+            cursor: pointer;
+            font-size: 24px;
+            /* 調整 Emoji 大小 */
+            margin: 5px;
+        }
+
+        #user-list {
+            list-style: none;
+            /* 去掉預設列表樣式 */
+            padding: 0;
+            /* 清除內邊距 */
+            margin: 0;
+            /* 清除外邊距 */
+        }
+
+        #sidebar {
+            background-color: #cce5ff;
+        }
+
+        #char-area {
+            background-color: #d4edda;
+        }
+
+        
+    </style>
+</head>
+
+<body>
+
+    <div class="container-fluid">
+        <div class="row ">
+            <div class="col-md-2" id="sidebar">
+                <b>在線人員</b>
+                <hr>
+                <ul id="user-list"></ul>
+            </div>
+            <div class="col-md-10" id="char-area">
+                <div id="messages"></div>
+                <form id="form" action="" class="input-group mb-3">
+                    <button type="button" id="emoji-btn" class="btn btn-secondary">😀</button>
+                    <div id="emoji-picker" class="emoji-picker">
+                        <span class="emoji">😀</span>
+                        <span class="emoji">😁</span>
+                        <span class="emoji">😂</span>
+                        <span class="emoji">👍</span>
+                        <span class="emoji">❤️</span>
+                        <span class="emoji">🎉</span>
+                        <span class="emoji">😎</span>
+                        <span class="emoji">🥳</span>
+                        <!-- 添加更多 Emoji 這裡 -->
+                    </div>
+                    <textarea id="input" class="form-control" autocomplete="off"
+                        placeholder="Type your message... or Ctrl + V for Image" rows="2"></textarea>
+                    <div class="input-group-append">
+                        <button type="submit" class="btn btn-primary">Send</button>
+                    </div>
+                </form>
+            </div>
+
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const userName = prompt("Please enter your name:");
+        const socket = io();
+
+        const form = document.getElementById('form');
+        const input = document.getElementById('input');
+        const messages = document.getElementById('messages');
+        const emojiBtn = document.getElementById('emoji-btn');
+        const emojiPicker = document.getElementById('emoji-picker');
+        const userList = document.getElementById('user-list');
+
+        let blinkInterval = null; // 用來控制閃爍效果
+
+        // 當表單提交時
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const messageContent = input.value.trim();
+            const timeStamp = dayjs(new Date()).format('HH:mm:ss')
+            if (messageContent) {
+                // 發送帶有用戶名稱和消息的訊息
+                socket.emit('chat message', `${userName} (${timeStamp}) : ${messageContent} `);
+                input.value = ''; // 清空輸入框
+            }
+        });
+
+        // 監聽鍵盤事件來支持 Enter 發送和 Ctrl + Enter 換行
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.ctrlKey) {
+                e.preventDefault(); // 防止插入換行
+                form.dispatchEvent(new Event('submit')); // 手動觸發表單提交事件
+            } else if (e.key === 'Enter' && e.ctrlKey) {
+                input.value += '\n'; // 在輸入框插入換行符
+            }
+        });
+
+
+        // 鏡像剪貼簿中圖片的處理
+        input.addEventListener('paste', (e) => {
+            const items = e.clipboardData.items;
+            const timeStamp = dayjs(new Date()).format('HH:mm:ss');// 獲取當前時間
+            for (const item of items) {
+                if (item.type.startsWith('image/')) {
+                    const file = item.getAsFile();
+                    const reader = new FileReader();
+                    reader.onload = function (event) {
+                        const img = new Image();
+                        img.src = event.target.result; // 設置圖片源
+                        const message = `${userName} (${timeStamp}) : <br> `;
+                        const image_message = `<a href="${img.src}" data-lightbox="image"><img src="${img.src}" style="max-width: 100%;max-height: 600px;"/></a>`;
+                        socket.emit('chat message', message + image_message); // 發送消息
+
+                        // socket.emit('chat message', image_message); // 發送消息
+                    };
+                    reader.readAsDataURL(file); // 將圖像轉換為數據 URL
+                    e.preventDefault(); // 防止默認粘貼行為
+                }
+            }
+        });
+
+        // 在線人數管理
+        socket.emit('user joined', userName);
+        socket.on('user list', (users) => {
+            userList.innerHTML = ''; // 清空用戶列表
+            users.forEach(user => {
+                const li = document.createElement('li');
+                li.textContent = user.split('||')[0] ; //+ "(" + user.split('||')[1].substring(0, 2) + ")";
+                userList.appendChild(li);
+            });
+        });
+
+        // 當接收到消息時
+        socket.on('chat message', (msg) => {
+            const item = document.createElement('div');
+            item.className = 'message'; // 將消息樣式設置為 'message'
+            // console.log(typeof(msg))
+            // console.log(msg)
+
+            if (msg.includes("<img ")) {
+                //  console.log("IMG")
+                item.innerHTML = msg;
+            }
+            else {
+                item.textContent = msg;
+            }
+
+            // item.textContent = msg;
+            messages.appendChild(item);
+            // 確保消息顯示在最底部
+            messages.scrollTop = messages.scrollHeight;
+
+            // 如果當前視窗不在焦點，開始閃爍效果
+            if (document.hidden) {
+                alert( '新消息!')
+                startBlinking();
+            } else {
+                // 如果在焦點，清除閃爍效果
+                stopBlinking();
+            }
+        });
+
+        // 開始閃爍
+        function startBlinking() {
+            if (blinkInterval) return; // 防止重複計時器
+            let originalTitle = document.title;
+            let isBlinking = false;
+
+            blinkInterval = setInterval(() => {
+                document.title = isBlinking ? originalTitle : '新消息!';
+                isBlinking = !isBlinking;
+            }, 1000); // 每秒切換一次
+        }
+
+        // 停止閃爍
+        function stopBlinking() {
+            clearInterval(blinkInterval);
+            blinkInterval = null;
+            document.title = '聊天室'; // 重置標題
+        }
+
+        // 監聽視窗焦點事件
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                // 當視窗失去焦點時，開啟閃爍
+                startBlinking();
+            } else {
+                // 獲得焦點時，停止閃爍
+                stopBlinking();
+            }
+        });
+
+        // 顯示或隱藏 Emoji 選擇器
+        emojiBtn.addEventListener('click', () => {
+            emojiPicker.style.display = emojiPicker.style.display === 'block' ? 'none' : 'block';
+        });
+
+        // 在輸入框中插入選擇的 Emoji
+        document.querySelectorAll('.emoji').forEach(emoji => {
+            emoji.addEventListener('click', (e) => {
+                input.value += e.target.textContent; // 在輸入框中插入 Emoji
+                emojiPicker.style.display = 'none'; // 選擇後隱藏 Emoji 選擇器
+                input.focus(); // 重新聚焦到輸入框
+            });
+        });
+
+        // 在點擊窗口任意地方關閉 Emoji 選擇器
+        window.addEventListener('click', (e) => {
+            if (e.target !== emojiBtn && !emojiPicker.contains(e.target)) {
+                emojiPicker.style.display = 'none';
+            }
+        });
+    </script>
+
+    <!-- Lightbox2 JS -->
+    <script src="https://cdn.jsdelivr.net/npm/lightbox2@2.11.3/dist/js/lightbox-plus-jquery.min.js"></script>
+
+
+</body>
+
+</html>
