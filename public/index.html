@@ -19,7 +19,7 @@
             margin: 0;
             font-family: Arial, sans-serif;
             display: flex;
-            height: 10vh;
+            height: 100vh;
             /* 設置為 100% 的視口高度 */
             overflow: hidden;
             /* 隱藏整個視口的滾動條 */
@@ -120,6 +120,7 @@
         <div class="row ">
             <div class="col-md-2" id="sidebar">
                 <b>在線人員</b>
+                <button id="change-name-btn" class="btn btn-sm btn-info my-2">更換名字</button>
                 <hr>
                 <ul id="user-list"></ul>
             </div>
@@ -152,7 +153,38 @@
     <script src="/socket.io/socket.io.js"></script>
     <script src="https://unpkg.com/sweetalert/dist/sweetalert.min.js"></script>
     <script>
-        const userName = prompt("Please enter your name:");
+        function setCookie(name, value, days) {
+            let expires = "";
+            if (days) {
+                const date = new Date();
+                date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+                expires = "; expires=" + date.toUTCString();
+            }
+            document.cookie = name + "=" + (value || "") + expires + "; path=/";
+        }
+
+        function getCookie(name) {
+            const nameEQ = name + "=";
+            const ca = document.cookie.split(';');
+            for (let i = 0; i < ca.length; i++) {
+                let c = ca[i];
+                while (c.charAt(0) == ' ') c = c.substring(1, c.length);
+                if (c.indexOf(nameEQ) == 0) return c.substring(nameEQ.length, c.length);
+            }
+            return null;
+        }
+
+        let userName = getCookie("username");
+        if (!userName) {
+            userName = prompt("Please enter your name:");
+            if (userName) {
+                setCookie("username", userName, 30);
+            } else {
+                userName = "Anonymous" + Math.floor(Math.random() * 1000);
+                setCookie("username", userName, 30);
+            }
+        }
+
         const socket = io();
 
         const form = document.getElementById('form');
@@ -161,8 +193,18 @@
         const emojiBtn = document.getElementById('emoji-btn');
         const emojiPicker = document.getElementById('emoji-picker');
         const userList = document.getElementById('user-list');
+        const changeNameBtn = document.getElementById('change-name-btn');
 
         let blinkInterval = null; // 用來控制閃爍效果
+
+        changeNameBtn.addEventListener('click', () => {
+            const newName = prompt("Please enter your new name:");
+            if (newName && newName.trim() !== '' && newName !== userName) {
+                userName = newName.trim();
+                setCookie("username", userName, 30);
+                socket.emit('change username', userName);
+            }
+        });
 
         // 當表單提交時
         form.addEventListener('submit', (e) => {
@@ -288,10 +330,7 @@
 
         // 監聽視窗焦點事件
         document.addEventListener('visibilitychange', () => {
-            if (document.hidden) {
-                //當視窗失去焦點時，開啟閃爍
-                startBlinking();
-            } else {
+            if (!document.hidden) {
                 // 獲得焦點時，停止閃爍
                 stopBlinking();
             }

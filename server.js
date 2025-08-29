@@ -16,9 +16,11 @@ app.use(express.static('public'));
 // 用戶列表
 let users = [];
 let emoji_list = [
-    '🍇', '🍈',
-    '🍉', '🍊', '🍋'
-]
+    '😀', '😁', '😂', '🤣', '😃', '😄', '😅', '😆', '😉', '😊',
+    '😋', '😎', '😍', '😘', '😗', '😙', '😚', '🙂', '🤗', '🤔',
+    '🥳', '🤩', '🥰', '🧡', '💛', '💚', '💙', '💜', '🤎', '🖤',
+    '🤍'
+];
 
 const historyFile = 'chat_history.json';
 let chatHistory = [];
@@ -52,9 +54,27 @@ io.on('connection', (socket) => {
     // 處理用戶加入
     socket.on('user joined', (userName) => {
         console.log('A user connected:' + userName);
-        socket.username = emoji_list[users.length % emoji_list.length] + " " + userName + `||${user_uuid}`;
+        socket.username = emoji_list[Math.floor(Math.random() * emoji_list.length)] + " " + userName + `||${user_uuid}`;
         users.push(socket.username); // 添加用戶名到用戶列表
         io.emit('user list', users); // 發送用戶列表給所有客戶端
+    });
+
+    // 處理用戶名稱變更
+    socket.on('change username', (newUserName) => {
+        const oldUserName = socket.username;
+        if (oldUserName) {
+            const userIndex = users.findIndex(user => user === oldUserName);
+            if (userIndex !== -1) {
+                const uuid = oldUserName.split('||')[1];
+                const emoji = oldUserName.split(' ')[0];
+                const newSocketUsername = `${emoji} ${newUserName}||${uuid}`;
+                
+                users[userIndex] = newSocketUsername;
+                socket.username = newSocketUsername;
+                
+                io.emit('user list', users);
+            }
+        }
     });
 
     // 當收到消息時，廣播給所有連接的客戶端
