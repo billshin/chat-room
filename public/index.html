@@ -4,155 +4,188 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>聊天室</title>
-
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/dayjs/1.11.13/dayjs.min.js"
-        integrity="sha512-FwNWaxyfy2XlEINoSnZh1JQ5TRRtGow0D6XcmAWmYCRgvqOUTnzCxPc9uF35u5ZEpirk1uhlPVA19tflhvnW1g=="
-        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-
-    <!-- 引入 Bootstrap CSS -->
+    <title>Chat Rooms</title>
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
-    <!-- Lightbox2 CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/lightbox2@2.11.3/dist/css/lightbox.min.css" rel="stylesheet">
     <style>
+        html,
         body {
+            height: 100%;
             margin: 0;
-            font-family: Arial, sans-serif;
-            display: flex;
-            height: 100vh;
-            /* 設置為 100% 的視口高度 */
-            overflow: hidden;
-            /* 隱藏整個視口的滾動條 */
-        }
-
-        #messages2 {
-            border: 1px solid #ccc;
-            padding: 5px;
-            white-space: pre-wrap;
-            /* 保留換行符號 */
-            word-wrap: break-word;
-            /* 使長單詞換行 */
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-end;
-            /* 確保最新消息在底部 */
-            height: calc(100vh - 170px);
-            /* 計算高度以適應底部表單 */
-            overflow-y: auto;
-            /* 顯示滾動條 */
-        }
-
-        #messages {
-            border: 1px solid #ccc;
-            padding: 5px;
-            white-space: pre-wrap;
-            /* 保留換行符號 */
-            word-wrap: break-word;
-            /* 使長單詞換行 */
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-start;
-            /* 確保最新消息在最底部。 */
-            height: calc(100vh - 170px);
-            /* 計算高度以適應底部表單 */
-            overflow-y: auto;
-            /* 顯示滾動條 */
-        }
-
-        .message {
-            padding: 10px;
-            margin-bottom: 5px;
-            border-radius: 5px;
-            /* 加入邊角圓滑效果 */
-        }
-
-        .message:nth-child(odd) {
-            background-color: #f0f0f0;
-            /* 偶數消息底色 */
-        }
-
-        .message:nth-child(even) {
-            background-color: #d9edf7;
-            /* 奇數消息底色 */
-        }
-
-        .emoji-picker {
-            display: none;
-            /* 初始隱藏 */
-            position: absolute;
-            background: white;
-            border: 1px solid #ccc;
-            padding: 10px;
-            z-index: 1000;
-        }
-
-        .emoji {
-            cursor: pointer;
-            font-size: 24px;
-            /* 調整 Emoji 大小 */
-            margin: 5px;
-        }
-
-        #user-list {
-            list-style: none;
-            /* 去掉預設列表樣式 */
             padding: 0;
-            /* 清除內邊距 */
-            margin: 0;
-            /* 清除外邊距 */
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+        }
+
+        body {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: #f0f2f5;
+        }
+
+        #app-container {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Lobby Styles */
+        #lobby {
+            padding: 40px;
+            max-width: 600px;
+            margin: 40px auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        #room-list .list-group-item {
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        #room-list .list-group-item:hover {
+            background-color: #f8f9fa;
+        }
+
+        /* Chat Room Styles */
+        #chat-room {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            width: 100%;
+        }
+
+        #chat-container {
+            display: flex;
+            height: 100%;
+            overflow: hidden;
         }
 
         #sidebar {
-            background-color: #cce5ff;
+            flex: 0 0 200px;
+            padding: 15px;
+            background-color: #f7f7f7;
+            border-right: 1px solid #ddd;
+            overflow-y: auto;
         }
 
-        #char-area {
-            background-color: #d4edda;
+        #messages-area {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 0;
         }
 
-        
+        #messages {
+            flex-grow: 1;
+            padding: 20px;
+            overflow-y: auto;
+            background-color: #e9ebee;
+        }
+
+        .message {
+            padding: 8px 12px;
+            margin-bottom: 8px;
+            border-radius: 18px;
+            max-width: 70%;
+            word-wrap: break-word;
+        }
+
+        .message .user-info {
+            font-weight: bold;
+            font-size: 0.9em;
+            margin-bottom: 4px;
+        }
+
+        .message.my-message {
+            background-color: #0084ff;
+            color: white;
+            margin-left: auto;
+        }
+
+        .message.other-message {
+            background-color: #f1f0f0;
+            color: #333;
+            margin-right: auto;
+        }
+
+        #form {
+            padding: 15px;
+            border-top: 1px solid #ddd;
+            background: #f7f7f7;
+        }
     </style>
 </head>
 
 <body>
-
-    <div class="container-fluid">
-        <div class="row ">
-            <div class="col-md-2" id="sidebar">
-                <b>在線人員</b>
-                <button id="change-name-btn" class="btn btn-sm btn-info my-2">更換名字</button>
-                <hr>
-                <ul id="user-list"></ul>
+    <div id="app-container">
+        <!-- Lobby View -->
+        <div id="lobby">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h2 class="mb-0">Chat Rooms</h2>
+                <button id="change-name-btn-lobby" class="btn btn-sm btn-outline-secondary">Change Name</button>
             </div>
-            <div class="col-md-10" id="char-area">
-                <div id="messages"></div>
-                <form id="form" action="" class="input-group mb-3">
-                    <button type="button" id="emoji-btn" class="btn btn-secondary">😀</button>
-                    <div id="emoji-picker" class="emoji-picker">
-                        <span class="emoji">😀</span>
-                        <span class="emoji">😁</span>
-                        <span class="emoji">😂</span>
-                        <span class="emoji">👍</span>
-                        <span class="emoji">❤️</span>
-                        <span class="emoji">🎉</span>
-                        <span class="emoji">😎</span>
-                        <span class="emoji">🥳</span>
-                        <!-- 添加更多 Emoji 這裡 -->
-                    </div>
-                    <textarea id="input" class="form-control" autocomplete="off"
-                        placeholder="Type your message... or Ctrl + V for Image" rows="2"></textarea>
-                    <div class="input-group-append">
-                        <button type="submit" class="btn btn-primary">Send</button>
-                    </div>
-                </form>
+            <p class="text-center text-muted mb-4">Welcome, <strong id="lobby-username"></strong></p>
+            <div class="mb-3">
+                <button id="create-room-btn" class="btn btn-primary btn-block">Create New Room</button>
             </div>
+            <hr>
+            <h4>Available Rooms</h4>
+            <p class="text-muted small">無人使用的聊天室將於24小時後自動移除。</p>
+            <ul id="room-list" class="list-group"></ul>
+        </div>
 
+        <!-- Chat Room View -->
+        <div id="chat-room" class="d-none">
+            <div id="chat-container">
+                <div id="sidebar">
+                    <h5 id="room-name-title"></h5>
+                    <button id="leave-room-btn" class="btn btn-sm btn-danger mb-2">Leave Room</button>
+                    <hr>
+                    <b>Online Users</b>
+                    <ul id="user-list" class="list-unstyled"></ul>
+                </div>
+                <div id="messages-area">
+                    <div id="messages"></div>
+                    <form id="form" action="" class="input-group">
+                        <input id="input" class="form-control" autocomplete="off" placeholder="Type your message...">
+                        <div class="input-group-append">
+                            <button type="submit" class="btn btn-primary">Send</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
         </div>
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
     <script src="https://unpkg.com/sweetalert/dist/sweetalert.min.js"></script>
     <script>
+        const socket = io();
+
+        // Views
+        const lobbyView = document.getElementById('lobby');
+        const chatRoomView = document.getElementById('chat-room');
+
+        // Lobby elements
+        const createRoomBtn = document.getElementById('create-room-btn');
+        const roomList = document.getElementById('room-list');
+        const changeNameBtnLobby = document.getElementById('change-name-btn-lobby');
+        const lobbyUsername = document.getElementById('lobby-username');
+
+        // Chat Room elements
+        const roomNameTitle = document.getElementById('room-name-title');
+        const leaveRoomBtn = document.getElementById('leave-room-btn');
+        const userList = document.getElementById('user-list');
+        const messages = document.getElementById('messages');
+        const form = document.getElementById('form');
+        const input = document.getElementById('input');
+
+        // App state
+        let userName = null;
+        let myUser = null;
+
+        // --- Cookie Functions ---
         function setCookie(name, value, days) {
             let expires = "";
             if (days) {
@@ -174,194 +207,154 @@
             return null;
         }
 
-        let userName = getCookie("username");
-        if (!userName) {
-            userName = prompt("Please enter your name:");
-            if (userName) {
+        // --- Initial Setup ---
+        async function init() {
+            userName = getCookie("username");
+            if (!userName) {
+                const value = await swal("Please enter your name:", {
+                    content: "input",
+                });
+                userName = value || `Anonymous${Math.floor(Math.random() * 1000)}`;
                 setCookie("username", userName, 30);
-            } else {
-                userName = "Anonymous" + Math.floor(Math.random() * 1000);
-                setCookie("username", userName, 30);
+            }
+            lobbyUsername.textContent = userName;
+            showLobby();
+        }
+
+        // --- View Switching ---
+        function showLobby() {
+            lobbyView.classList.remove('d-none');
+            chatRoomView.classList.add('d-none');
+        }
+
+        function showChatRoom() {
+            lobbyView.classList.add('d-none');
+            chatRoomView.classList.remove('d-none');
+        }
+
+        // --- UI Update Functions ---
+        function updateRoomList(rooms) {
+            roomList.innerHTML = '';
+            if (Object.keys(rooms).length === 0) {
+                roomList.innerHTML = '<li class="list-group-item">No rooms available. Create one!</li>';
+                return;
+            }
+            for (const roomName in rooms) {
+                const room = rooms[roomName];
+                const li = document.createElement('li');
+                li.className = 'list-group-item d-flex justify-content-between align-items-center';
+
+                let icon = '';
+                if (room.isPublic === false) {
+                    icon = ' <span class="text-muted">🔒</span>';
+                }
+                li.innerHTML = `${room.name}${icon} <span class="badge badge-primary badge-pill">${room.userCount}</span>`;
+
+                li.addEventListener('click', () => {
+                    if (room.isPublic === true) {
+                        socket.emit('join room', { roomName: room.name, userName });
+                    } else {
+                        swal("This room is private. Enter password:", {
+                            content: "input",
+                            attributes: { type: "password" },
+                        }).then(password => {
+                            if (password !== null) { // Allow empty password string but not cancellation
+                                socket.emit('join room', { roomName: room.name, password, userName });
+                            }
+                        });
+                    }
+                });
+                roomList.appendChild(li);
             }
         }
 
-        const socket = io();
+        function updateUserList(users) {
+            userList.innerHTML = '';
+            users.forEach(user => {
+                const li = document.createElement('li');
+                li.textContent = `${user.emoji} ${user.name}`;
+                if (user.id === socket.id) {
+                    li.innerHTML += ' (You)';
+                    myUser = user;
+                }
+                userList.appendChild(li);
+            });
+        }
 
-        const form = document.getElementById('form');
-        const input = document.getElementById('input');
-        const messages = document.getElementById('messages');
-        const emojiBtn = document.getElementById('emoji-btn');
-        const emojiPicker = document.getElementById('emoji-picker');
-        const userList = document.getElementById('user-list');
-        const changeNameBtn = document.getElementById('change-name-btn');
+        function addMessage(message) {
+            const item = document.createElement('div');
+            item.classList.add('message');
 
-        let blinkInterval = null; // 用來控制閃爍效果
+            const isMyMessage = myUser && message.user.id === myUser.id;
+            item.classList.add(isMyMessage ? 'my-message' : 'other-message');
 
-        changeNameBtn.addEventListener('click', () => {
-            const newName = prompt("Please enter your new name:");
-            if (newName && newName.trim() !== '' && newName !== userName) {
+            const userInfo = isMyMessage ? 'You' : `${message.user.emoji} ${message.user.name}`;
+            item.innerHTML = `<div class="user-info">${userInfo}</div><div>${message.content}</div>`;
+            messages.appendChild(item);
+            messages.scrollTop = messages.scrollHeight;
+        }
+
+        // --- Socket Event Listeners ---
+        socket.on('room list', updateRoomList);
+
+        socket.on('error message', (message) => {
+            swal("Error", message, "error");
+        });
+
+        socket.on('join success', ({ roomName, users, history }) => {
+            showChatRoom();
+            roomNameTitle.textContent = roomName;
+            updateUserList(users);
+            messages.innerHTML = '';
+            history.forEach(addMessage);
+        });
+
+        socket.on('user list', updateUserList);
+        socket.on('chat message', addMessage);
+
+        // --- UI Event Handlers ---
+        changeNameBtnLobby.addEventListener('click', async () => {
+            const newName = await swal("Enter your new name:", {
+                content: "input",
+                value: userName,
+            });
+            if (newName && newName.trim() !== '') {
                 userName = newName.trim();
                 setCookie("username", userName, 30);
-                socket.emit('change username', userName);
+                lobbyUsername.textContent = userName;
+                swal("Success", "Your name has been updated!", "success");
             }
         });
 
-        // 當表單提交時
+        createRoomBtn.addEventListener('click', async () => {
+            const roomName = await swal("Enter new room name:", {
+                content: "input",
+            });
+            if (!roomName) return;
+            const password = await swal("Enter password (optional, leave blank for public):", {
+                content: "input",
+                attributes: { type: "password" },
+            });
+            socket.emit('create room', { roomName, password, userName });
+        });
+
+        leaveRoomBtn.addEventListener('click', () => {
+            window.location.reload();
+        });
+
         form.addEventListener('submit', (e) => {
             e.preventDefault();
             const messageContent = input.value.trim();
-            const timeStamp = dayjs(new Date()).format('HH:mm:ss')
             if (messageContent) {
-                // 發送帶有用戶名稱和消息的訊息
-                socket.emit('chat message', `${userName} (${timeStamp}) : ${messageContent} `);
-                input.value = ''; // 清空輸入框
+                socket.emit('chat message', messageContent);
+                input.value = '';
             }
         });
 
-        // 監聽鍵盤事件來支持 Enter 發送和 Ctrl + Enter 換行
-        input.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.ctrlKey) {
-                e.preventDefault(); // 防止插入換行
-                form.dispatchEvent(new Event('submit')); // 手動觸發表單提交事件
-            } else if (e.key === 'Enter' && e.ctrlKey) {
-                input.value += '\n'; // 在輸入框插入換行符
-            }
-        });
+        // --- Run --- 
+        init();
 
-
-        // 鏡像剪貼簿中圖片的處理
-        input.addEventListener('paste', (e) => {
-            const items = e.clipboardData.items;
-            const timeStamp = dayjs(new Date()).format('HH:mm:ss');// 獲取當前時間
-            for (const item of items) {
-                if (item.type.startsWith('image/')) {
-                    const file = item.getAsFile();
-                    const reader = new FileReader();
-                    reader.onload = function (event) {
-                        const img = new Image();
-                        img.src = event.target.result; // 設置圖片源
-                        const message = `${userName} (${timeStamp}) : <br> `;
-                        const image_message = `<a href="${img.src}" data-lightbox="image"><img src="${img.src}" style="max-width: 100%;max-height: 600px;"/></a>`;
-                        socket.emit('chat message', message + image_message); // 發送消息
-
-                        // socket.emit('chat message', image_message); // 發送消息
-                    };
-                    reader.readAsDataURL(file); // 將圖像轉換為數據 URL
-                    e.preventDefault(); // 防止默認粘貼行為
-                }
-            }
-        });
-
-        // 在線人數管理
-        socket.emit('user joined', userName);
-        socket.on('user list', (users) => {
-            userList.innerHTML = ''; // 清空用戶列表
-            users.forEach(user => {
-                const li = document.createElement('li');
-                li.textContent = user.split('||')[0] ; //+ "(" + user.split('||')[1].substring(0, 2) + ")";
-                userList.appendChild(li);
-            });
-        });
-
-        // 處理歷史紀錄
-        socket.on('chat history', (history) => {
-            messages.innerHTML = '';
-            history.forEach(message => {
-                const item = document.createElement('div');
-                item.className = 'message';
-                if (message.content.includes("<img ")) {
-                    item.innerHTML = message.content;
-                } else {
-                    item.textContent = message.content;
-                }
-                messages.appendChild(item);
-            });
-            messages.scrollTop = messages.scrollHeight;
-        });
-
-        //當接收到消息時
-        socket.on('chat message', (msg) => {
-            const item = document.createElement('div');
-            item.className = 'message'; // 將消息樣式設置為 'message'
-            // console.log(typeof(msg))
-            // console.log(msg)
-
-            if (msg.includes("<img ")) {
-                //  console.log("IMG")
-                item.innerHTML = msg;
-            }
-            else {
-                item.textContent = msg;
-            }
-
-            // item.textContent = msg;
-            messages.appendChild(item);
-            // 確保消息顯示在最底部
-            messages.scrollTop = messages.scrollHeight;
-
-            // 如果當前視窗不在焦點，開始閃爍效果
-            if (document.hidden) {
-                swal( '新消息!')
-                startBlinking();
-            } else {
-                // 如果在焦點，清除閃爍效果
-                stopBlinking();
-            }
-        });
-
-        // 開始閃爍
-        function startBlinking() {
-            if (blinkInterval) return; // 防止重複計時器
-            let originalTitle = document.title;
-            let isBlinking = false;
-
-            blinkInterval = setInterval(() => {
-                document.title = isBlinking ? originalTitle : '新消息!';
-                isBlinking = !isBlinking;
-            }, 1000); // 每秒切換一次
-        }
-
-        // 停止閃爍
-        function stopBlinking() {
-            clearInterval(blinkInterval);
-            blinkInterval = null;
-            document.title = '聊天室'; // 重置標題
-        }
-
-        // 監聽視窗焦點事件
-        document.addEventListener('visibilitychange', () => {
-            if (!document.hidden) {
-                // 獲得焦點時，停止閃爍
-                stopBlinking();
-            }
-        });
-
-        // 顯示或隱藏 Emoji 選擇器
-        emojiBtn.addEventListener('click', () => {
-            emojiPicker.style.display = emojiPicker.style.display === 'block' ? 'none' : 'block';
-        });
-
-        // 在輸入框中插入選擇的 Emoji
-        document.querySelectorAll('.emoji').forEach(emoji => {
-            emoji.addEventListener('click', (e) => {
-                input.value += e.target.textContent; // 在輸入框中插入 Emoji
-                emojiPicker.style.display = 'none'; // 選擇後隱藏 Emoji 選擇器
-                input.focus(); // 重新聚焦到輸入框
-            });
-        });
-
-        // 在點擊窗口任意地方關閉 Emoji 選擇器
-        window.addEventListener('click', (e) => {
-            if (e.target !== emojiBtn && !emojiPicker.contains(e.target)) {
-                emojiPicker.style.display = 'none';
-            }
-        });
     </script>
-
-    <!-- Lightbox2 JS -->
-    <script src="https://cdn.jsdelivr.net/npm/lightbox2@2.11.3/dist/js/lightbox-plus-jquery.min.js"></script>
-
-
 </body>
 
 </html>

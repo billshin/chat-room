@@ -2,20 +2,15 @@ const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
 const path = require('path');
-const { v4: uuidv4 } = require('uuid'); // 引入 UUID 模組
-const fs = require('fs');
+const { v4: uuidv4 } = require('uuid');
 
-// 初始化應用程序
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server);
 
-// 服務靜態文件
 app.use(express.static('public'));
 
-// 用戶列表
-let users = [];
-let emoji_list = ['🍇',
+const emoji_list = ['🍇',
     '🍈',
     '🍉',
     '🍊',
@@ -104,82 +99,140 @@ let emoji_list = ['🍇',
     '🏺'
 ];
 
-const historyFile = 'chat_history.json';
-let chatHistory = [];
 
-// 讀取歷史紀錄
-fs.readFile(historyFile, 'utf8', (err, data) => {
-    if (!err) {
-        chatHistory = JSON.parse(data);
-        // 過濾超過3天的歷史紀錄
-        const thirtyDaysAgo = new Date().getTime() - 3 * 24 * 60 * 60 * 1000;
-        chatHistory = chatHistory.filter(message => new Date(message.timestamp).getTime() > thirtyDaysAgo);
-        fs.writeFile(historyFile, JSON.stringify(chatHistory, null, 2), () => { });
+// In-memory data store for rooms
+let rooms = {};
+
+// Helper function to get room details
+const getRoomsList = () => {
+    const allRooms = {};
+    for (const roomName in rooms) {
+        allRooms[roomName] = {
+            name: roomName,
+            userCount: rooms[roomName].users.length,
+            isPublic: rooms[roomName].isPublic
+        };
     }
-});
+    return allRooms;
+};
 
-// 添加根路由
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html')); // 發送 index.html 文件
-});
-
-
-// 當客戶端連接時
 io.on('connection', (socket) => {
-    const ip = socket.handshake.address; // 獲取用戶的 IP 地址
-    console.log(`A user connected: ${ip}`);
-    const user_uuid = uuidv4(); // 生成唯一的用戶 ID
+    console.log(`A user connected: ${socket.id}`);
 
-    // 發送歷史紀錄
-    socket.emit('chat history', chatHistory);
+    // Send the initial list of rooms
+    socket.emit('room list', getRoomsList());
 
-    // 處理用戶加入
-    socket.on('user joined', (userName) => {
-        console.log('A user connected:' + userName);
-        socket.username = emoji_list[Math.floor(Math.random() * emoji_list.length)] + " " + userName + `||${user_uuid}`;
-        users.push(socket.username); // 添加用戶名到用戶列表
-        io.emit('user list', users); // 發送用戶列表給所有客戶端
-    });
-
-    // 處理用戶名稱變更
-    socket.on('change username', (newUserName) => {
-        const oldUserName = socket.username;
-        if (oldUserName) {
-            const userIndex = users.findIndex(user => user === oldUserName);
-            if (userIndex !== -1) {
-                const uuid = oldUserName.split('||')[1];
-                const emoji = oldUserName.split(' ')[0];
-                const newSocketUsername = `${emoji} ${newUserName}||${uuid}`;
-
-                users[userIndex] = newSocketUsername;
-                socket.username = newSocketUsername;
-
-                io.emit('user list', users);
-            }
+    socket.on('create room', ({ roomName, password, userName }) => {
+        if (rooms[roomName]) {
+            return socket.emit('error message', 'Room name already exists.');
         }
+
+        const user = {
+            id: socket.id,
+            uuid: uuidv4(),
+            name: userName,
+            emoji: emoji_list[Math.floor(Math.random() * emoji_list.length)]
+        };
+
+        rooms[roomName] = {
+            users: [user],
+            history: [],
+            isPublic: !password,
+            password: password || null
+        };
+
+        socket.join(roomName);
+        socket.room = roomName;
+        socket.user = user;
+
+        console.log(`User ${user.name} created and joined room: ${roomName}`);
+
+        socket.emit('join success', { roomName, users: rooms[roomName].users, history: rooms[roomName].history });
+        io.emit('room list', getRoomsList()); // Broadcast updated room list to everyone
     });
 
-    // 當收到消息時，廣播給所有連接的客戶端
+    socket.on('join room', ({ roomName, password, userName }) => {
+        const room = rooms[roomName];
+        if (!room) {
+            return socket.emit('error message', 'Room does not exist.');
+        }
+        if (!room.isPublic && room.password !== password) {
+            return socket.emit('error message', 'Incorrect password.');
+        }
+
+        const user = {
+            id: socket.id,
+            uuid: uuidv4(),
+            name: userName,
+            emoji: emoji_list[Math.floor(Math.random() * emoji_list.length)]
+        };
+
+        room.users.push(user);
+        socket.join(roomName);
+        socket.room = roomName;
+        socket.user = user;
+
+        console.log(`User ${user.name} joined room: ${roomName}`);
+
+        // Send room data to the joining user
+        socket.emit('join success', { roomName, users: room.users, history: room.history });
+        // Update user list for others in the room
+        socket.to(roomName).emit('user list', room.users);
+        // Update user count in public room list
+        io.emit('room list', getRoomsList());
+    });
+
     socket.on('chat message', (msg) => {
+        if (!socket.room || !socket.user) {
+            return; // Ignore messages from users not in a room
+        }
+        const room = rooms[socket.room];
+        if (!room) {
+            return;
+        }
+
         const message = {
+            user: socket.user,
             content: msg,
             timestamp: new Date()
         };
-        chatHistory.push(message);
-        fs.writeFile(historyFile, JSON.stringify(chatHistory, null, 2), () => { });
-        io.emit('chat message', msg);
+
+        room.history.push(message);
+        // Limit history to last 100 messages
+        if (room.history.length > 100) {
+            room.history.shift();
+        }
+
+        io.to(socket.room).emit('chat message', message);
     });
 
-    // 當客戶端斷開時
     socket.on('disconnect', () => {
-        console.log('User disconnected: ' + socket.username);
-        // 從用戶列表中移除該用戶
-        users = users.filter(user => user !== socket.username);
-        io.emit('user list', users); // 更新用戶列表
+        console.log(`A user disconnected: ${socket.id}`);
+        if (socket.room && socket.user) {
+            const room = rooms[socket.room];
+            if (room) {
+                room.users = room.users.filter(u => u.id !== socket.id);
+                // If room is empty, remove it after a delay (e.g., 60 seconds)
+                if (room.users.length === 0) {
+                    console.log(`Room ${socket.room} is empty. It will be removed in 24 hours.`);
+                    setTimeout(() => {
+                        const currentRoom = rooms[socket.room];
+                        if (currentRoom && currentRoom.users.length === 0) {
+                            delete rooms[socket.room];
+                            io.emit('room list', getRoomsList());
+                            console.log(`Room ${socket.room} has been removed.`);
+                        }
+                    }, 24 * 60 * 60 * 1000); // 24 hours
+                } else {
+                    // Broadcast updated user list
+                    io.to(socket.room).emit('user list', room.users);
+                    io.emit('room list', getRoomsList()); // Update user count
+                }
+            }
+        }
     });
 });
 
-// 啟動伺服器
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`);
