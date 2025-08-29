@@ -150,6 +150,7 @@
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
+    <script src="https://unpkg.com/sweetalert/dist/sweetalert.min.js"></script>
     <script>
         const userName = prompt("Please enter your name:");
         const socket = io();
@@ -220,7 +221,23 @@
             });
         });
 
-        // 當接收到消息時
+        // 處理歷史紀錄
+        socket.on('chat history', (history) => {
+            messages.innerHTML = '';
+            history.forEach(message => {
+                const item = document.createElement('div');
+                item.className = 'message';
+                if (message.content.includes("<img ")) {
+                    item.innerHTML = message.content;
+                } else {
+                    item.textContent = message.content;
+                }
+                messages.appendChild(item);
+            });
+            messages.scrollTop = messages.scrollHeight;
+        });
+
+        //當接收到消息時
         socket.on('chat message', (msg) => {
             const item = document.createElement('div');
             item.className = 'message'; // 將消息樣式設置為 'message'
@@ -242,7 +259,7 @@
 
             // 如果當前視窗不在焦點，開始閃爍效果
             if (document.hidden) {
-                alert( '新消息!')
+                swal( '新消息!')
                 startBlinking();
             } else {
                 // 如果在焦點，清除閃爍效果
@@ -272,7 +289,7 @@
         // 監聽視窗焦點事件
         document.addEventListener('visibilitychange', () => {
             if (document.hidden) {
-                // 當視窗失去焦點時，開啟閃爍
+                //當視窗失去焦點時，開啟閃爍
                 startBlinking();
             } else {
                 // 獲得焦點時，停止閃爍
