@@ -114,6 +114,25 @@
             border-top: 1px solid #ddd;
             background: #f7f7f7;
         }
+
+        .emoji-picker {
+            display: none;
+            position: absolute;
+            bottom: 65px; /* Position above the input form */
+            left: 15px;
+            background: white;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            padding: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            z-index: 100;
+            width: 280px;
+        }
+        .emoji {
+            cursor: pointer;
+            font-size: 24px;
+            margin: 5px;
+        }
     </style>
 </head>
 
@@ -147,8 +166,12 @@
                 </div>
                 <div id="messages-area">
                     <div id="messages"></div>
-                    <form id="form" action="" class="input-group">
-                        <input id="input" class="form-control" autocomplete="off" placeholder="Type your message...">
+                    <form id="form" action="" class="input-group position-relative">
+                        <div class="input-group-prepend">
+                            <button type="button" id="emoji-btn" class="btn btn-outline-secondary">😀</button>
+                        </div>
+                        <div id="emoji-picker" class="emoji-picker"></div>
+                        <input id="input" class="form-control" autocomplete="off" placeholder="Type your message or paste an image...">
                         <div class="input-group-append">
                             <button type="submit" class="btn btn-primary">Send</button>
                         </div>
@@ -180,6 +203,8 @@
         const messages = document.getElementById('messages');
         const form = document.getElementById('form');
         const input = document.getElementById('input');
+        const emojiBtn = document.getElementById('emoji-btn');
+        const emojiPicker = document.getElementById('emoji-picker');
 
         // App state
         let userName = null;
@@ -218,6 +243,7 @@
                 setCookie("username", userName, 30);
             }
             lobbyUsername.textContent = userName;
+            setupEmojiPicker();
             showLobby();
         }
 
@@ -294,6 +320,22 @@
             messages.scrollTop = messages.scrollHeight;
         }
 
+        // --- Feature Setup ---
+        function setupEmojiPicker() {
+            const emojis = ['😀', '😁', '😂', '🤣', '😃', '😄', '😅', '😆', '😉', '😊', '😋', '😎', '😍', '😘', '😗', '😙', '😚', '🙂', '🤗', '🤔', '😐', '😑', '😶', '🙄', '😏', '😣', '😥', '😮', '🤐', '😯', '😪', '😫', '😴', '😌', '😛', '😜', '😝', '🤤', '😒', '😓', '😔', '😕', '🙃', '🤑', '😲', '☹️', '🙁', '😖', '😞', '😟', '😤', '😢', '😭', '😦', '😧', '😨', '😩', '🤯', '😬', '😰', '😱', '😳', '🤪', '😵', '😡', '😠', '🤬', '😷', '🤒', '🤕', '🤢', '🤮', '🤧', '😇', '🤠', '🤡', '🤥', '🤫', '🤭', '🧐', '🤓', '😈', '👿', '👍', '👎', '❤️', '💔', '🎉', '✨', '🔥', '💯'];
+            emojis.forEach(emoji => {
+                const span = document.createElement('span');
+                span.className = 'emoji';
+                span.textContent = emoji;
+                span.addEventListener('click', () => {
+                    input.value += emoji;
+                    emojiPicker.style.display = 'none';
+                    input.focus();
+                });
+                emojiPicker.appendChild(span);
+            });
+        }
+
         // --- Socket Event Listeners ---
         socket.on('room list', updateRoomList);
 
@@ -313,6 +355,34 @@
         socket.on('chat message', addMessage);
 
         // --- UI Event Handlers ---
+        emojiBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            emojiPicker.style.display = emojiPicker.style.display === 'block' ? 'none' : 'block';
+        });
+
+        document.addEventListener('click', (e) => {
+            if (e.target !== emojiBtn && !emojiPicker.contains(e.target)) {
+                emojiPicker.style.display = 'none';
+            }
+        });
+
+        input.addEventListener('paste', (e) => {
+            const items = e.clipboardData.items;
+            for (const item of items) {
+                if (item.type.startsWith('image/')) {
+                    e.preventDefault();
+                    const file = item.getAsFile();
+                    const reader = new FileReader();
+                    reader.onload = function(event) {
+                        const imgHTML = `<a href="${event.target.result}" target="_blank"><img src="${event.target.result}" style="max-width: 250px; border-radius: 5px;" /></a>`;
+                        socket.emit('chat message', imgHTML);
+                    };
+                    reader.readAsDataURL(file);
+                    return;
+                }
+            }
+        });
+
         changeNameBtnLobby.addEventListener('click', async () => {
             const newName = await swal("Enter your new name:", {
                 content: "input",
