@@ -3,6 +3,7 @@ const http = require('http');
 const socketIo = require('socket.io');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
+const fs = require('fs');
 
 const app = express();
 const server = http.createServer(app);
@@ -10,149 +11,127 @@ const io = socketIo(server);
 
 app.use(express.static('public'));
 
-const emoji_list = ['🍇',
-    '🍈',
-    '🍉',
-    '🍊',
-    '🍋',
-    '🍍',
-    '🍎',
-    '🍏',
-    '🍐',
-    '🍑',
-    '🍒',
-    '🍓',
-    '🥝',
-    '🍅',
-    '🥑',
-    '🍆',
-    '🥔',
-    '🥕',
-    '🌽',
-    '🌶',
-    '🥒',
-    '🥜',
-    '🌰',
-    '🥐',
-    '🥖',
-    '🥞',
-    '🧀',
-    '🍖',
-    '🍗',
-    '🥓',
-    '🍔',
-    '🍟',
-    '🍕',
-    '🌭',
-    '🌮',
-    '🌯',
-    '🥚',
-    '🍳',
-    '🥘',
-    '🍲',
-    '🥗',
-    '🍿',
-    '🍱',
-    '🍘',
-    '🍙',
-    '🍚',
-    '🍛',
-    '🍜',
-    '🍝',
-    '🍠',
-    '🍢',
-    '🍣',
-    '🍤',
-    '🍥',
-    '🍡',
-    '🦀',
-    '🦐',
-    '🦑',
-    '🍦',
-    '🍧',
-    '🍨',
-    '🍩',
-    '🍪',
-    '🎂',
-    '🍰',
-    '🍫',
-    '🍬',
-    '🍭',
-    '🍮',
-    '🍯',
-    '🍼',
-    '🥛',
-    '☕',
-    '🍶',
-    '🍾',
-    '🍷',
-    '🍸',
-    '🍹',
-    '🍺',
-    '🍻',
-    '🥂',
-    '🥃',
-    '🍽',
-    '🍴',
-    '🥄',
-    '🔪',
-    '🏺'
-];
+const DATA_DIR = 'data';
+const ROOMS_FILE = path.join(DATA_DIR, 'rooms.json');
 
+// In-memory store for room cleanup timeouts
+const roomTimeouts = {};
 
-// In-memory data store for rooms
+// Load data from DB file
 let rooms = {};
+try {
+    if (fs.existsSync(ROOMS_FILE)) {
+        const data = fs.readFileSync(ROOMS_FILE, 'utf8');
+        rooms = JSON.parse(data);
+        // Initialize an empty users array for each room on startup
+        for (const roomUUID in rooms) {
+            rooms[roomUUID].users = [];
+        }
+    }
+} catch (err) {
+    console.error('Error reading database file:', err);
+}
 
-// Helper function to get room details
+// Function to save data to DB file
+const saveData = () => {
+    try {
+        if (!fs.existsSync(DATA_DIR)) {
+            fs.mkdirSync(DATA_DIR);
+        }
+        const roomsToSave = JSON.parse(JSON.stringify(rooms));
+        for (const roomUUID in roomsToSave) {
+            delete roomsToSave[roomUUID].users;
+        }
+        const data = JSON.stringify(roomsToSave, null, 2);
+        fs.writeFileSync(ROOMS_FILE, data, 'utf8');
+    } catch (err) {
+        console.error('Error writing to database file:', err);
+    }
+};
+
+const emitOnlineUsersCount = () => {
+    io.emit('online users count', io.engine.clientsCount);
+};
+
+const emoji_list = ['🍇', '🍈', '🍉', '🍊', '🍋', '🍍', '🍎', '🍏', '🍐', '🍑', '🍒', '🍓', '🥝', '🍅', '🥑', '🍆', '🥔', '🥕', '🌽', '🌶', '🥒', '🥜', '🌰', '🥐', '🥖', '🥞', '🧀', '🍖', '🍗', '🥓', '🍔', '🍟', '🍕', '🌭', '🌮', '🌯', '🥚', '🍳', '🥘', '🍲', '🥗', '🍿', '🍱', '🍘', '🍙', '🍚', '🍛', '🍜', '🍝', '🍠', '🍢', '🍣', '🍤', '🍥', '🍡', '🦀', '🦐', '🦑', '🍦', '🍧', '🍨', '🍩', '🍪', '🎂', '🍰', '🍫', '🍬', '🍭', '🍮', '🍯', '🍼', '🥛', '☕', '🍶', '🍾', '🍷', '🍸', '🍹', '🍺', '🍻', '🥂', '🥃', '🍽', '🍴', '🥄', '🔪', '🏺'];
+
 const getRoomsList = () => {
-    const allRooms = {};
-    for (const roomName in rooms) {
-        allRooms[roomName] = {
-            name: roomName,
-            userCount: rooms[roomName].users.length,
-            isPublic: rooms[roomName].isPublic
-        };
+    const allRooms = [];
+    for (const roomUUID in rooms) {
+        allRooms.push({
+            uuid: roomUUID,
+            name: rooms[roomUUID].name,
+            userCount: rooms[roomUUID].users.length,
+            isPublic: rooms[roomUUID].isPublic,
+            isListed: rooms[roomUUID].isListed,
+            creator: rooms[roomUUID].creator
+        });
     }
     return allRooms;
 };
 
+const closeRoom = (roomUUID) => {
+    const room = rooms[roomUUID];
+    if (!room) return;
+
+    console.log(`Closing room ${room.name} (${roomUUID})`);
+    io.to(roomUUID).emit('room closed', 'The room has been closed by the creator.');
+    
+    // Disconnect all users in the room
+    room.users.forEach(user => {
+        const socketInstance = io.sockets.sockets.get(user.id);
+        if (socketInstance) {
+            socketInstance.leave(roomUUID);
+        }
+    });
+
+    delete rooms[roomUUID];
+    io.emit('room list', getRoomsList());
+    saveData();
+    emitOnlineUsersCount(); // Emit after room closed (users disconnected)
+};
+
 io.on('connection', (socket) => {
     console.log(`A user connected: ${socket.id}`);
+    emitOnlineUsersCount(); // Emit on connection
 
-    // Send the initial list of rooms
     socket.emit('room list', getRoomsList());
 
-    socket.on('create room', ({ roomName, password, userName }) => {
-        if (rooms[roomName]) {
-            return socket.emit('error message', 'Room name already exists.');
-        }
-
+    socket.on('create room', ({ roomName, password, userName, userUUID, isListed, autoCloseMinutes }) => {
+        const roomUUID = uuidv4();
         const user = {
             id: socket.id,
-            uuid: uuidv4(),
+            uuid: userUUID,
             name: userName,
             emoji: emoji_list[Math.floor(Math.random() * emoji_list.length)]
         };
 
-        rooms[roomName] = {
+        rooms[roomUUID] = {
+            uuid: roomUUID,
+            name: roomName,
             users: [user],
             history: [],
             isPublic: !password,
-            password: password || null
+            password: password || null,
+            creator: userUUID,
+            isListed: isListed,
+            autoCloseMinutes: parseInt(autoCloseMinutes, 10) || 1440 // Default to 24 hours
         };
 
-        socket.join(roomName);
-        socket.room = roomName;
+        socket.join(roomUUID);
+        socket.room = roomUUID;
         socket.user = user;
 
-        console.log(`User ${user.name} created and joined room: ${roomName}`);
+        console.log(`User ${user.name} created and joined room: ${roomName} (${roomUUID})`);
 
-        socket.emit('join success', { roomName, users: rooms[roomName].users, history: rooms[roomName].history });
-        io.emit('room list', getRoomsList()); // Broadcast updated room list to everyone
+        socket.emit('join success', { roomUUID, roomName, users: rooms[roomUUID].users, history: rooms[roomUUID].history, creator: rooms[roomUUID].creator });
+        io.emit('room list', getRoomsList());
+        saveData();
+        emitOnlineUsersCount(); // Emit after user creates and joins a room
     });
 
-    socket.on('join room', ({ roomName, password, userName }) => {
-        const room = rooms[roomName];
+    socket.on('join room', ({ roomUUID, password, userName, userUUID: clientUUID }) => {
+        const room = rooms[roomUUID];
         if (!room) {
             return socket.emit('error message', 'Room does not exist.');
         }
@@ -162,48 +141,60 @@ io.on('connection', (socket) => {
 
         const user = {
             id: socket.id,
-            uuid: uuidv4(),
+            uuid: clientUUID,
             name: userName,
             emoji: emoji_list[Math.floor(Math.random() * emoji_list.length)]
         };
 
+        // Clear any pending cleanup timeout for this room
+        if (roomTimeouts[roomUUID]) {
+            clearTimeout(roomTimeouts[roomUUID]);
+            delete roomTimeouts[roomUUID];
+        }
+
         room.users.push(user);
-        socket.join(roomName);
-        socket.room = roomName;
+        socket.join(roomUUID);
+        socket.room = roomUUID;
         socket.user = user;
 
-        console.log(`User ${user.name} joined room: ${roomName}`);
+        console.log(`User ${user.name} joined room: ${room.name} (${roomUUID})`);
 
-        // Send room data to the joining user
-        socket.emit('join success', { roomName, users: room.users, history: room.history });
-        // Update user list for others in the room
-        socket.to(roomName).emit('user list', room.users);
-        // Update user count in public room list
+        socket.emit('join success', { roomUUID: room.uuid, roomName: room.name, users: room.users, history: room.history, creator: room.creator });
+        socket.to(roomUUID).emit('user list', room.users);
         io.emit('room list', getRoomsList());
+        emitOnlineUsersCount(); // Emit after user joins a room
+    });
+
+    socket.on('close room', ({ roomUUID, userUUID }) => {
+        const room = rooms[roomUUID];
+        if (room && room.creator === userUUID) {
+            closeRoom(roomUUID);
+        }
     });
 
     socket.on('chat message', (msg) => {
-        if (!socket.room || !socket.user) {
-            return; // Ignore messages from users not in a room
-        }
+        if (!socket.room || !socket.user) return;
         const room = rooms[socket.room];
-        if (!room) {
-            return;
-        }
+        if (!room) return;
 
-        const message = {
-            user: socket.user,
-            content: msg,
-            timestamp: new Date()
-        };
-
+        const message = { user: socket.user, content: msg, timestamp: new Date() };
         room.history.push(message);
-        // Limit history to last 100 messages
-        if (room.history.length > 100) {
-            room.history.shift();
-        }
+        if (room.history.length > 100) room.history.shift();
 
         io.to(socket.room).emit('chat message', message);
+        saveData();
+    });
+
+    socket.on('change emoji', ({ newEmoji, userUUID }) => {
+        if (!socket.room || !socket.user) return;
+        const room = rooms[socket.room];
+        if (!room) return;
+
+        const userToUpdate = room.users.find(user => user.uuid === userUUID);
+        if (userToUpdate) {
+            userToUpdate.emoji = newEmoji;
+            io.to(socket.room).emit('user list', room.users);
+        }
     });
 
     socket.on('disconnect', () => {
@@ -212,25 +203,20 @@ io.on('connection', (socket) => {
             const room = rooms[socket.room];
             if (room) {
                 room.users = room.users.filter(u => u.id !== socket.id);
-                // If room is empty, remove it after a delay (e.g., 60 seconds)
-                if (room.users.length === 0) {
-                    console.log(`Room ${socket.room} is empty. It will be removed in 24 hours.`);
-                    setTimeout(() => {
-                        const currentRoom = rooms[socket.room];
-                        if (currentRoom && currentRoom.users.length === 0) {
-                            delete rooms[socket.room];
-                            io.emit('room list', getRoomsList());
-                            console.log(`Room ${socket.room} has been removed.`);
-                        }
-                    }, 24 * 60 * 60 * 1000); // 24 hours
+                if (room.users.length === 0 && room.autoCloseMinutes > 0) {
+                    console.log(`Room ${room.name} (${socket.room}) is empty. It will be removed in ${room.autoCloseMinutes} minutes.`);
+                    roomTimeouts[socket.room] = setTimeout(() => {
+                        closeRoom(socket.room);
+                        delete roomTimeouts[socket.room];
+                    }, room.autoCloseMinutes * 60 * 1000);
                 } else {
-                    // Broadcast updated user list
                     io.to(socket.room).emit('user list', room.users);
-                    io.emit('room list', getRoomsList()); // Update user count
+                    io.emit('room list', getRoomsList());
                 }
             }
         }
     });
+    emitOnlineUsersCount(); // Emit on disconnect
 });
 
 const PORT = process.env.PORT || 3000;

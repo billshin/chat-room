@@ -5,7 +5,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Chat Rooms</title>
-    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/vendor/bootstrap.min.css">
+    <link rel="stylesheet" href="/vendor/lightbox.min.css">
+    <link rel="stylesheet" href="/vendor/sweetalert2.min.css">
     <style>
         html,
         body {
@@ -98,7 +100,7 @@
         }
 
         .message.my-message {
-            background-color: #0084ff;
+            background-color: #67b3fa;
             color: white;
             margin-left: auto;
         }
@@ -139,17 +141,30 @@
 <body>
     <div id="app-container">
         <!-- Lobby View -->
-        <div id="lobby">
+        <div id="lobby" class="d-none">
             <div class="d-flex justify-content-between align-items-center mb-2">
                 <h2 class="mb-0">Chat Rooms</h2>
                 <button id="change-name-btn-lobby" class="btn btn-sm btn-outline-secondary">Change Name</button>
             </div>
             <p class="text-center text-muted mb-4">Welcome, <strong id="lobby-username"></strong></p>
+            <div id="identity-section" class="mb-3">
+                <small class="text-muted">Your User ID:</small>
+                <div class="input-group">
+                    <input type="text" id="user-uuid-display" class="form-control form-control-sm" readonly>
+                    <div class="input-group-append">
+                        <button id="copy-uuid-btn" class="btn btn-sm btn-outline-secondary">Copy</button>
+                    </div>
+                </div>
+                <button id="restore-identity-btn" class="btn btn-sm btn-link pl-0">Have an ID? Restore it here.</button>
+            </div>
             <div class="mb-3">
                 <button id="create-room-btn" class="btn btn-primary btn-block">Create New Room</button>
             </div>
             <hr>
-            <h4>Available Rooms</h4>
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h4>Available Rooms</h4>
+                <small class="text-muted">Online: <span id="online-users-count">0</span></small>
+            </div>
             <p class="text-muted small">無人使用的聊天室將於24小時後自動移除。</p>
             <ul id="room-list" class="list-group"></ul>
         </div>
@@ -160,6 +175,7 @@
                 <div id="sidebar">
                     <h5 id="room-name-title"></h5>
                     <button id="leave-room-btn" class="btn btn-sm btn-danger mb-2">Leave Room</button>
+                    <!-- <button id="change-emoji-btn" class="btn btn-sm btn-info mb-2">Change Emoji</button> -->
                     <hr>
                     <b>Online Users</b>
                     <ul id="user-list" class="list-unstyled"></ul>
@@ -182,7 +198,15 @@
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
-    <script src="https://unpkg.com/sweetalert/dist/sweetalert.min.js"></script>
+    <script src="/vendor/jquery.min.js"></script>
+    <script src="/vendor/lightbox.min.js"></script>
+    <script src="/vendor/sweetalert2.all.min.js"></script>
+    <script>
+        lightbox.option({
+          'fadeDuration': 300,
+          'resizeDuration': 300
+        })
+    </script>
     <script>
         const socket = io();
 
@@ -195,6 +219,9 @@
         const roomList = document.getElementById('room-list');
         const changeNameBtnLobby = document.getElementById('change-name-btn-lobby');
         const lobbyUsername = document.getElementById('lobby-username');
+        const userUuidDisplay = document.getElementById('user-uuid-display');
+        const copyUuidBtn = document.getElementById('copy-uuid-btn');
+        const restoreIdentityBtn = document.getElementById('restore-identity-btn');
 
         // Chat Room elements
         const roomNameTitle = document.getElementById('room-name-title');
@@ -208,43 +235,58 @@
 
         // App state
         let userName = null;
+        let userUUID = null;
         let myUser = null;
+        let currentRoomUUID = null;
+        let isAutoRejoining = false;
 
-        // --- Cookie Functions ---
-        function setCookie(name, value, days) {
-            let expires = "";
-            if (days) {
-                const date = new Date();
-                date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
-                expires = "; expires=" + date.toUTCString();
-            }
-            document.cookie = name + "=" + (value || "") + expires + "; path=/";
-        }
-
-        function getCookie(name) {
-            const nameEQ = name + "=";
-            const ca = document.cookie.split(';');
-            for (let i = 0; i < ca.length; i++) {
-                let c = ca[i];
-                while (c.charAt(0) == ' ') c = c.substring(1, c.length);
-                if (c.indexOf(nameEQ) == 0) return c.substring(nameEQ.length, c.length);
-            }
-            return null;
+        // --- UUID Generator ---
+        function uuidv4() {
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            });
         }
 
         // --- Initial Setup ---
         async function init() {
-            userName = getCookie("username");
+            // Get or create user UUID
+            userUUID = localStorage.getItem("userUUID");
+            if (!userUUID) {
+                userUUID = uuidv4();
+                localStorage.setItem("userUUID", userUUID);
+            }
+            userUuidDisplay.value = userUUID;
+
+            // Get or create username
+            userName = localStorage.getItem("username");
             if (!userName) {
-                const value = await swal("Please enter your name:", {
-                    content: "input",
+                const { value: nameValue } = await Swal.fire({
+                    title: 'Enter your name',
+                    input: 'text',
+                    allowOutsideClick: false,
+                    allowEscapeKey: false,
+                    inputValidator: (value) => {
+                        if (!value) {
+                            return 'You need to write something!'
+                        }
+                    }
                 });
-                userName = value || `Anonymous${Math.floor(Math.random() * 1000)}`;
-                setCookie("username", userName, 30);
+                userName = nameValue;
+                localStorage.setItem("username", userName);
             }
             lobbyUsername.textContent = userName;
+
             setupEmojiPicker();
-            showLobby();
+
+            // Auto-rejoin logic
+            const roomUUIDFromHash = window.location.hash.substring(1);
+            if (roomUUIDFromHash) {
+                isAutoRejoining = true;
+                socket.emit('join room', { roomUUID: roomUUIDFromHash, userName, userUUID });
+            } else {
+                showLobby();
+            }
         }
 
         // --- View Switching ---
@@ -261,37 +303,46 @@
         // --- UI Update Functions ---
         function updateRoomList(rooms) {
             roomList.innerHTML = '';
-            if (Object.keys(rooms).length === 0) {
+            const visibleRooms = rooms.filter(room => room.isListed || room.creator === userUUID);
+
+            if (visibleRooms.length === 0) {
                 roomList.innerHTML = '<li class="list-group-item">No rooms available. Create one!</li>';
                 return;
             }
-            for (const roomName in rooms) {
-                const room = rooms[roomName];
+
+            visibleRooms.forEach(room => {
                 const li = document.createElement('li');
                 li.className = 'list-group-item d-flex justify-content-between align-items-center';
+                li.dataset.uuid = room.uuid;
 
-                let icon = '';
-                if (room.isPublic === false) {
-                    icon = ' <span class="text-muted">🔒</span>';
+                let icons = '';
+                if (!room.isListed) {
+                    icons += ' <span title="Unlisted Room">👁️‍🗨️</span>';
                 }
-                li.innerHTML = `${room.name}${icon} <span class="badge badge-primary badge-pill">${room.userCount}</span>`;
+                if (room.isPublic === false) {
+                    icons += ' <span class="text-muted" title="Private Room">🔒</span>';
+                }
+
+                li.innerHTML = `${room.name}${icons} <span class="badge badge-primary badge-pill">${room.userCount}</span>`;
 
                 li.addEventListener('click', () => {
                     if (room.isPublic === true) {
-                        socket.emit('join room', { roomName: room.name, userName });
+                        socket.emit('join room', { roomUUID: room.uuid, userName, userUUID });
                     } else {
-                        swal("This room is private. Enter password:", {
-                            content: "input",
-                            attributes: { type: "password" },
-                        }).then(password => {
-                            if (password !== null) { // Allow empty password string but not cancellation
-                                socket.emit('join room', { roomName: room.name, password, userName });
+                        Swal.fire({
+                            title: 'This room is private',
+                            input: 'password',
+                            inputPlaceholder: 'Enter password',
+                            showCancelButton: true
+                        }).then((result) => {
+                            if (result.isConfirmed) {
+                                socket.emit('join room', { roomUUID: room.uuid, password: result.value, userName, userUUID });
                             }
                         });
                     }
                 });
                 roomList.appendChild(li);
-            }
+            });
         }
 
         function updateUserList(users) {
@@ -299,7 +350,7 @@
             users.forEach(user => {
                 const li = document.createElement('li');
                 li.textContent = `${user.emoji} ${user.name}`;
-                if (user.id === socket.id) {
+                if (user.uuid === userUUID) {
                     li.innerHTML += ' (You)';
                     myUser = user;
                 }
@@ -311,7 +362,7 @@
             const item = document.createElement('div');
             item.classList.add('message');
 
-            const isMyMessage = myUser && message.user.id === myUser.id;
+            const isMyMessage = myUser && message.user.uuid === myUser.uuid;
             item.classList.add(isMyMessage ? 'my-message' : 'other-message');
 
             const userInfo = isMyMessage ? 'You' : `${message.user.emoji} ${message.user.name}`;
@@ -340,21 +391,99 @@
         socket.on('room list', updateRoomList);
 
         socket.on('error message', (message) => {
-            swal("Error", message, "error");
+            if (isAutoRejoining && message === 'Incorrect password.') {
+                const roomUUIDFromHash = window.location.hash.substring(1);
+                Swal.fire({
+                    title: 'This room is private',
+                    input: 'password',
+                    inputPlaceholder: 'Enter password',
+                    showCancelButton: true
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        socket.emit('join room', { roomUUID: roomUUIDFromHash, password: result.value, userName, userUUID });
+                    }
+                });
+            } else {
+                Swal.fire('Error', message, 'error');
+            }
+            isAutoRejoining = false; // Reset flag after handling
         });
 
-        socket.on('join success', ({ roomName, users, history }) => {
+        socket.on('join success', ({ roomUUID, roomName, users, history, creator }) => {
+            isAutoRejoining = false; // Reset flag on success
+            currentRoomUUID = roomUUID;
+            window.location.hash = roomUUID;
             showChatRoom();
             roomNameTitle.textContent = roomName;
             updateUserList(users);
             messages.innerHTML = '';
             history.forEach(addMessage);
+
+            // Show/hide close room button
+            const closeRoomBtnContainer = document.getElementById('sidebar');
+            let closeRoomBtn = document.getElementById('close-room-btn');
+            if (creator === userUUID) {
+                if (!closeRoomBtn) {
+                    closeRoomBtn = document.createElement('button');
+                    closeRoomBtn.id = 'close-room-btn';
+                    closeRoomBtn.className = 'btn btn-sm btn-warning mt-2';
+                    closeRoomBtn.textContent = 'Close Room';
+                    closeRoomBtn.addEventListener('click', () => {
+                        Swal.fire({
+                            title: "Are you sure?",
+                            text: "This will permanently close the room for everyone.",
+                            icon: "warning",
+                            showCancelButton: true,
+                            confirmButtonText: 'Yes, close it!',
+                            cancelButtonText: 'No, cancel!',
+                            reverseButtons: true
+                        }).then((result) => {
+                            if (result.isConfirmed) {
+                                socket.emit('close room', { roomUUID: currentRoomUUID, userUUID });
+                            }
+                        });
+                    });
+                    leaveRoomBtn.after(closeRoomBtn);
+                }
+                closeRoomBtn.style.display = 'block';
+            } else if (closeRoomBtn) {
+                closeRoomBtn.style.display = 'none';
+            }
+        });
+
+        socket.on('room closed', (message) => {
+            Swal.fire("Room Closed", message, "info").then(() => {
+                window.location.hash = '';
+                window.location.reload();
+            });
         });
 
         socket.on('user list', updateUserList);
         socket.on('chat message', addMessage);
 
+        socket.on('online users count', (count) => {
+            document.getElementById('online-users-count').textContent = count;
+        });
+
         // --- UI Event Handlers ---
+        copyUuidBtn.addEventListener('click', () => {
+            userUuidDisplay.select();
+            document.execCommand('copy');
+            Swal.fire('Copied!', 'Your User ID has been copied to the clipboard.', 'success');
+        });
+
+        restoreIdentityBtn.addEventListener('click', async () => {
+            const { value: newUUID } = await Swal.fire({
+                title: 'Restore Identity',
+                input: 'text',
+                inputPlaceholder: 'Paste your User ID here'
+            });
+            if (newUUID && newUUID.trim() !== '') {
+                localStorage.setItem("userUUID", newUUID.trim());
+                window.location.reload();
+            }
+        });
+
         emojiBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             emojiPicker.style.display = emojiPicker.style.display === 'block' ? 'none' : 'block';
@@ -374,7 +503,7 @@
                     const file = item.getAsFile();
                     const reader = new FileReader();
                     reader.onload = function(event) {
-                        const imgHTML = `<a href="${event.target.result}" target="_blank"><img src="${event.target.result}" style="max-width: 250px; border-radius: 5px;" /></a>`;
+                        const imgHTML = `<a href="${event.target.result}" data-lightbox="chat-image"><img src="${event.target.result}" style="max-width: 250px; border-radius: 5px;" /></a>`;
                         socket.emit('chat message', imgHTML);
                     };
                     reader.readAsDataURL(file);
@@ -384,31 +513,59 @@
         });
 
         changeNameBtnLobby.addEventListener('click', async () => {
-            const newName = await swal("Enter your new name:", {
-                content: "input",
-                value: userName,
+            const { value: newName } = await Swal.fire({
+                title: 'Enter your new name',
+                input: 'text',
+                inputValue: userName
             });
             if (newName && newName.trim() !== '') {
                 userName = newName.trim();
-                setCookie("username", userName, 30);
+                localStorage.setItem("username", userName);
                 lobbyUsername.textContent = userName;
-                swal("Success", "Your name has been updated!", "success");
+                Swal.fire('Success', 'Your name has been updated!', 'success');
             }
         });
 
-        createRoomBtn.addEventListener('click', async () => {
-            const roomName = await swal("Enter new room name:", {
-                content: "input",
+        createRoomBtn.addEventListener('click', () => {
+            Swal.fire({
+                title: 'Create New Room',
+                html:
+                    '<input id="swal-input1" class="swal2-input" placeholder="Room Name" style="width: 80%; margin: 5px;">' +
+                    '<input id="swal-input2" class="swal2-input" placeholder="Password (optional)" type="password" style="width: 80%; margin: 5px;">' +
+                    '<div class="swal2-content" style="margin: 5px;"><label><input type="checkbox" id="swal-input3"> 顯示於清單</label></div>' +
+                    '閒置聊天室將於以下指定時間後自動移除!<br>' +
+                    '<select id="swal-input4" class="swal2-input" style="width: 80%; margin: 5px;">' +
+                        '<option value="30">Auto-close after 30 Minutes</option>' +
+                        '<option value="60">Auto-close after 1 Hour</option>' +
+                        '<option value="360">Auto-close after 6 Hours</option>' +
+                        '<option value="1440" selected>Auto-close after 24 Hours</option>' +
+                        '<option value="1440" selected>Auto-close after 1 Day</option>' + 
+                        '<option value="10080">Auto-close after 7 Days</option>' +   
+                        '<option value="43200">Auto-close after 30 Days</option>' +    
+                    '</select>',
+
+
+                focusConfirm: false,
+                preConfirm: () => {
+                    return [
+                        document.getElementById('swal-input1').value,
+                        document.getElementById('swal-input2').value,
+                        document.getElementById('swal-input3').checked,
+                        document.getElementById('swal-input4').value
+                    ]
+                }
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    const [roomName, password, isListed, autoCloseMinutes] = result.value;
+                    if (roomName) {
+                        socket.emit('create room', { roomName, password, isListed, autoCloseMinutes, userName, userUUID });
+                    }
+                }
             });
-            if (!roomName) return;
-            const password = await swal("Enter password (optional, leave blank for public):", {
-                content: "input",
-                attributes: { type: "password" },
-            });
-            socket.emit('create room', { roomName, password, userName });
         });
 
         leaveRoomBtn.addEventListener('click', () => {
+            window.location.hash = '';
             window.location.reload();
         });
 
@@ -425,6 +582,3 @@
         init();
 
     </script>
-</body>
-
-</html>
