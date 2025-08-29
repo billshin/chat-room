@@ -15,11 +15,93 @@ app.use(express.static('public'));
 
 // 用戶列表
 let users = [];
-let emoji_list = [
-    '😀', '😁', '😂', '🤣', '😃', '😄', '😅', '😆', '😉', '😊',
-    '😋', '😎', '😍', '😘', '😗', '😙', '😚', '🙂', '🤗', '🤔',
-    '🥳', '🤩', '🥰', '🧡', '💛', '💚', '💙', '💜', '🤎', '🖤',
-    '🤍'
+let emoji_list = ['🍇',
+    '🍈',
+    '🍉',
+    '🍊',
+    '🍋',
+    '🍍',
+    '🍎',
+    '🍏',
+    '🍐',
+    '🍑',
+    '🍒',
+    '🍓',
+    '🥝',
+    '🍅',
+    '🥑',
+    '🍆',
+    '🥔',
+    '🥕',
+    '🌽',
+    '🌶',
+    '🥒',
+    '🥜',
+    '🌰',
+    '🥐',
+    '🥖',
+    '🥞',
+    '🧀',
+    '🍖',
+    '🍗',
+    '🥓',
+    '🍔',
+    '🍟',
+    '🍕',
+    '🌭',
+    '🌮',
+    '🌯',
+    '🥚',
+    '🍳',
+    '🥘',
+    '🍲',
+    '🥗',
+    '🍿',
+    '🍱',
+    '🍘',
+    '🍙',
+    '🍚',
+    '🍛',
+    '🍜',
+    '🍝',
+    '🍠',
+    '🍢',
+    '🍣',
+    '🍤',
+    '🍥',
+    '🍡',
+    '🦀',
+    '🦐',
+    '🦑',
+    '🍦',
+    '🍧',
+    '🍨',
+    '🍩',
+    '🍪',
+    '🎂',
+    '🍰',
+    '🍫',
+    '🍬',
+    '🍭',
+    '🍮',
+    '🍯',
+    '🍼',
+    '🥛',
+    '☕',
+    '🍶',
+    '🍾',
+    '🍷',
+    '🍸',
+    '🍹',
+    '🍺',
+    '🍻',
+    '🥂',
+    '🥃',
+    '🍽',
+    '🍴',
+    '🥄',
+    '🔪',
+    '🏺'
 ];
 
 const historyFile = 'chat_history.json';
@@ -32,7 +114,7 @@ fs.readFile(historyFile, 'utf8', (err, data) => {
         // 過濾超過3天的歷史紀錄
         const thirtyDaysAgo = new Date().getTime() - 3 * 24 * 60 * 60 * 1000;
         chatHistory = chatHistory.filter(message => new Date(message.timestamp).getTime() > thirtyDaysAgo);
-        fs.writeFile(historyFile, JSON.stringify(chatHistory, null, 2), () => {});
+        fs.writeFile(historyFile, JSON.stringify(chatHistory, null, 2), () => { });
     }
 });
 
@@ -68,10 +150,10 @@ io.on('connection', (socket) => {
                 const uuid = oldUserName.split('||')[1];
                 const emoji = oldUserName.split(' ')[0];
                 const newSocketUsername = `${emoji} ${newUserName}||${uuid}`;
-                
+
                 users[userIndex] = newSocketUsername;
                 socket.username = newSocketUsername;
-                
+
                 io.emit('user list', users);
             }
         }
@@ -84,7 +166,7 @@ io.on('connection', (socket) => {
             timestamp: new Date()
         };
         chatHistory.push(message);
-        fs.writeFile(historyFile, JSON.stringify(chatHistory, null, 2), () => {});
+        fs.writeFile(historyFile, JSON.stringify(chatHistory, null, 2), () => { });
         io.emit('chat message', msg);
     });
 
