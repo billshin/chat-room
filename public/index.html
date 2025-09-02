@@ -165,7 +165,7 @@
                 <h4>Available Rooms</h4>
                 <small class="text-muted">Online: <span id="online-users-count">0</span></small>
             </div>
-            <p class="text-muted small">無人使用的聊天室將於24小時後自動移除。</p>
+            <!-- <p class="text-muted small">無人使用的聊天室將於24小時後自動移除。</p> -->
             <ul id="room-list" class="list-group"></ul>
         </div>
 
@@ -365,7 +365,7 @@
             const isMyMessage = myUser && message.user.uuid === myUser.uuid;
             item.classList.add(isMyMessage ? 'my-message' : 'other-message');
 
-            const userInfo = isMyMessage ? 'You' : `${message.user.emoji} ${message.user.name}`;
+            const userInfo = isMyMessage ? '' : `${message.user.emoji} ${message.user.name}`;
             item.innerHTML = `<div class="user-info">${userInfo}</div><div>${message.content}</div>`;
             messages.appendChild(item);
             messages.scrollTop = messages.scrollHeight;
@@ -533,7 +533,7 @@
                     '<input id="swal-input1" class="swal2-input" placeholder="Room Name" style="width: 80%; margin: 5px;">' +
                     '<input id="swal-input2" class="swal2-input" placeholder="Password (optional)" type="password" style="width: 80%; margin: 5px;">' +
                     '<div class="swal2-content" style="margin: 5px;"><label><input type="checkbox" id="swal-input3"> 顯示於清單</label></div>' +
-                    '閒置聊天室將於以下指定時間後自動移除!<br>' +
+                    '聊天室將於以下時間<b>`閒置`</b>後自動移除!<br>' +
                     '<select id="swal-input4" class="swal2-input" style="width: 80%; margin: 5px;">' +
                         '<option value="30">Auto-close after 30 Minutes</option>' +
                         '<option value="60">Auto-close after 1 Hour</option>' +
