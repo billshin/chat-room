@@ -9,6 +9,20 @@ const app = express();
 const server = http.createServer(app);
 const io = socketIo(server);
 
+const MAX_TIMEOUT_DELAY = 2147483647; // approx 24.8 days
+
+function setLongTimeout(callback, delay) {
+    if (delay > MAX_TIMEOUT_DELAY) {
+        const remaining = delay - MAX_TIMEOUT_DELAY;
+        // Set a timeout for the max delay, and then recursively call setLongTimeout with the remaining time
+        return setTimeout(() => {
+            setLongTimeout(callback, remaining);
+        }, MAX_TIMEOUT_DELAY);
+    }
+
+    return setTimeout(callback, delay);
+}
+
 app.use(express.static('public'));
 
 const DATA_DIR = 'data';
@@ -26,6 +40,24 @@ try {
         // Initialize an empty users array for each room on startup
         for (const roomUUID in rooms) {
             rooms[roomUUID].users = [];
+            // Reschedule auto-close for empty rooms on startup
+            if (rooms[roomUUID].closingTime) {
+                const closingTime = new Date(rooms[roomUUID].closingTime);
+                const now = new Date();
+                const delay = closingTime - now;
+
+                if (delay > 0) {
+                    console.log(`Rescheduling closing for room ${rooms[roomUUID].name} in ${delay / 1000 / 60} minutes.`);
+                    roomTimeouts[roomUUID] = setLongTimeout(() => {
+                        closeRoom(roomUUID);
+                        delete roomTimeouts[roomUUID];
+                    }, delay);
+                } else {
+                    // If closing time has passed, close it immediately
+                    console.log(`Closing time for room ${rooms[roomUUID].name} has passed. Closing now.`);
+                    closeRoom(roomUUID);
+                }
+            }
         }
     }
 } catch (err) {
@@ -64,7 +96,8 @@ const getRoomsList = () => {
             userCount: rooms[roomUUID].users.length,
             isPublic: rooms[roomUUID].isPublic,
             isListed: rooms[roomUUID].isListed,
-            creator: rooms[roomUUID].creator
+            creator: rooms[roomUUID].creator,
+            closingTime: rooms[roomUUID].closingTime || null
         });
     }
     return allRooms;
@@ -162,6 +195,8 @@ io.on('connection', (socket) => {
         if (roomTimeouts[roomUUID]) {
             clearTimeout(roomTimeouts[roomUUID]);
             delete roomTimeouts[roomUUID];
+            delete room.closingTime;
+            saveData();
         }
 
         room.users.push(user);
@@ -255,11 +290,16 @@ io.on('connection', (socket) => {
             if (room) {
                 room.users = room.users.filter(u => u.id !== socket.id);
                 if (room.users.length === 0 && room.autoCloseMinutes > 0) {
+                    const closingTime = new Date(new Date().getTime() + room.autoCloseMinutes * 60 * 1000);
+                    room.closingTime = closingTime;
                     console.log(`Room ${room.name} (${socket.room}) is empty. It will be removed in ${room.autoCloseMinutes} minutes.`);
-                    roomTimeouts[socket.room] = setTimeout(() => {
+                    const delay = room.autoCloseMinutes * 60 * 1000;
+                    roomTimeouts[socket.room] = setLongTimeout(() => {
                         closeRoom(socket.room);
                         delete roomTimeouts[socket.room];
-                    }, room.autoCloseMinutes * 60 * 1000);
+                    }, delay);
+                    io.emit('room list', getRoomsList());
+                    saveData();
                 } else {
                     io.to(socket.room).emit('user list', room.users);
                     io.emit('room list', getRoomsList());

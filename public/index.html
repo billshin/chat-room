@@ -12,7 +12,7 @@
     <link rel="stylesheet" href="/vendor/lightbox.min.css">
     <link rel="stylesheet" href="/vendor/sweetalert2.min.css">
 
-  
+
     <style>
         html,
         body {
@@ -163,6 +163,17 @@
             font-size: 24px;
             margin: 5px;
         }
+
+        #sidebar-menu-container {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        #sidebar-menu-container .btn {
+            width: 100%;
+            margin: 0;
+        }
     </style>
 </head>
 
@@ -203,8 +214,10 @@
             <div id="chat-container">
                 <div id="sidebar">
                     <h5 id="room-name-title"></h5>
-                    <button id="leave-room-btn" class="btn btn-sm btn-danger mb-2">Leave Room</button>
-                    <button id="enable-notifications-btn" class="btn btn-sm btn-info mb-2">Enable Notifications</button>
+                    <div id="sidebar-menu-container">
+                        <button id="leave-room-btn" class="btn btn-sm btn-danger">Leave Room</button>
+                        <button id="enable-notifications-btn" class="btn btn-sm btn-info">Enable Notifications</button>
+                    </div>
                     <!-- <button id="change-emoji-btn" class="btn btn-sm btn-info mb-2">Change Emoji</button> -->
                     <hr>
                     <b>Online Users</b>
@@ -240,6 +253,29 @@
         })
     </script>
     <script>
+        function formatTimeDiff(milliseconds) {
+            if (milliseconds <= 0) {
+                return "less than a second";
+            }
+
+            let seconds = Math.floor(milliseconds / 1000);
+            let minutes = Math.floor(seconds / 60);
+            let hours = Math.floor(minutes / 60);
+            let days = Math.floor(hours / 24);
+
+            seconds %= 60;
+            minutes %= 60;
+            hours %= 24;
+
+            const parts = [];
+            if (days > 0) parts.push(`${days}d`);
+            if (hours > 0) parts.push(`${hours}h`);
+            if (minutes > 0) parts.push(`${minutes}m`);
+            if (seconds > 0 && parts.length < 2) parts.push(`${seconds}s`); // Only show seconds if display is not too cluttered
+
+            return parts.slice(0, 2).join(' '); // Show at most 2 units
+        }
+
         const socket = io();
 
         // Views
@@ -333,58 +369,82 @@
         }
 
         // --- UI Update Functions ---
+        let roomListInterval;
         function updateRoomList(rooms) {
-            roomList.innerHTML = '';
-            const visibleRooms = rooms.filter(room => room.isListed || room.creator === userUUID);
+            if (roomListInterval) clearInterval(roomListInterval);
 
-            if (visibleRooms.length === 0) {
-                roomList.innerHTML = '<li class="list-group-item">No rooms available. Create one!</li>';
-                return;
-            }
+            const renderList = () => {
+                // To avoid losing focus on input fields when re-rendering
+                const activeElementId = document.activeElement.id;
 
-            visibleRooms.forEach(room => {
-                const li = document.createElement('li');
-                li.className = 'list-group-item d-flex justify-content-between align-items-center';
-                li.dataset.uuid = room.uuid;
+                roomList.innerHTML = '';
+                const visibleRooms = rooms.filter(room => room.isListed || room.creator === userUUID);
 
-                let icons = '';
-                if (room.isListed) {
-                    icons += '🌐';
-                }
-                else {
-                    icons += '👀';
+                if (visibleRooms.length === 0) {
+                    roomList.innerHTML = '<li class="list-group-item">No rooms available. Create one!</li>';
+                    if (roomListInterval) clearInterval(roomListInterval); // Stop timer if no rooms
+                    return;
                 }
 
-                if (room.isPublic === false) {
-                    icons += '🔒';
-                }
+                visibleRooms.forEach(room => {
+                    const li = document.createElement('li');
+                    li.className = 'list-group-item d-flex justify-content-between align-items-center';
+                    li.dataset.uuid = room.uuid;
 
-                if (icons != '') {
-                    icons = `<span title="listed Room">${icons}</span>`;
-                }
-
-
-
-                li.innerHTML = `${room.name}${icons} <span class="badge badge-primary badge-pill">${room.userCount}</span>`;
-
-                li.addEventListener('click', () => {
-                    if (room.isPublic === true) {
-                        socket.emit('join room', { roomUUID: room.uuid, userName, userUUID });
+                    let icons = '';
+                    if (room.isListed) {
+                        icons += '🌐';
                     } else {
-                        Swal.fire({
-                            title: 'This room is private',
-                            input: 'password',
-                            inputPlaceholder: 'Enter password',
-                            showCancelButton: true
-                        }).then((result) => {
-                            if (result.isConfirmed) {
-                                socket.emit('join room', { roomUUID: room.uuid, password: result.value, userName, userUUID });
-                            }
-                        });
+                        icons += '👀';
                     }
+
+                    if (room.isPublic === false) {
+                        icons += '🔒';
+                    }
+
+                    if (icons != '') {
+                        icons = `<span title="listed Room">${icons}</span>`;
+                    }
+
+                    let closingTimeInfo = '';
+                    if (room.closingTime) {
+                        const closingDate = new Date(room.closingTime);
+                        const now = new Date();
+                        const diff = closingDate - now;
+                        if (diff > 0) {
+                            closingTimeInfo = `<small class="text-danger ml-2"> | Closes in ${formatTimeDiff(diff)}</small>`;
+                        }
+                    }
+
+                    li.innerHTML = `<div>${room.name}${icons}${closingTimeInfo}</div> <span class="badge badge-primary badge-pill">${room.userCount}</span>`;
+
+                    li.addEventListener('click', () => {
+                        if (room.isPublic === true) {
+                            socket.emit('join room', { roomUUID: room.uuid, userName, userUUID });
+                        } else {
+                            Swal.fire({
+                                title: 'This room is private',
+                                input: 'password',
+                                inputPlaceholder: 'Enter password',
+                                showCancelButton: true
+                            }).then((result) => {
+                                if (result.isConfirmed) {
+                                    socket.emit('join room', { roomUUID: room.uuid, password: result.value, userName, userUUID });
+                                }
+                            });
+                        }
+                    });
+                    roomList.appendChild(li);
                 });
-                roomList.appendChild(li);
-            });
+
+                // Restore focus
+                if (document.getElementById(activeElementId)) {
+                    document.getElementById(activeElementId).focus();
+                }
+            };
+
+            renderList();
+            roomListInterval = setInterval(renderList, 1000);
         }
 
         function updateUserList(users) {
@@ -512,15 +572,17 @@
                 }
                 Notification.requestPermission().then(permission => {
                     if (permission === 'granted') {
-                        Swal.fire('Success!', 'Desktop notifications have been enabled.', 'success');
+                        Swal.fire('Success!', `瀏覽器通知已啟用!<br>
+                        (需同時開啟瀏覽器通知 & Windows 右下角系統通知 才會收到通知)`, 'success');
                         new Notification('Notifications Enabled!', { body: 'You will now be notified of new messages.' });
                     } else {
-                        Swal.fire('Info', 'You have not enabled desktop notifications.', 'info');
+                        Swal.fire('error', `需同時開啟瀏覽器通知 & Windows 右下角系統通知 才會收到通知`, 'error');
                     }
                 });
             });
 
             // Creator-only buttons setup
+            const sidebarMenu = document.getElementById('sidebar-menu-container');
             let closeRoomBtn = document.getElementById('close-room-btn');
             let editRoomBtn = document.getElementById('edit-room-btn');
 
@@ -529,7 +591,7 @@
                 if (!closeRoomBtn) {
                     closeRoomBtn = document.createElement('button');
                     closeRoomBtn.id = 'close-room-btn';
-                    closeRoomBtn.className = 'btn btn-sm btn-warning mt-2';
+                    closeRoomBtn.className = 'btn btn-sm btn-warning';
                     closeRoomBtn.textContent = 'Close Room';
                     closeRoomBtn.addEventListener('click', () => {
                         Swal.fire({
@@ -546,7 +608,7 @@
                             }
                         });
                     });
-                    leaveRoomBtn.after(closeRoomBtn);
+                    sidebarMenu.appendChild(closeRoomBtn);
                 }
                 closeRoomBtn.style.display = 'block';
 
@@ -554,12 +616,12 @@
                 if (!editRoomBtn) {
                     editRoomBtn = document.createElement('button');
                     editRoomBtn.id = 'edit-room-btn';
-                    editRoomBtn.className = 'btn btn-sm btn-secondary mt-2';
-                    editRoomBtn.textContent = 'Edit Settings';
+                    editRoomBtn.className = 'btn btn-sm btn-secondary';
+                    editRoomBtn.textContent = 'Edit Room Settings';
                     editRoomBtn.addEventListener('click', () => {
                         socket.emit('get room settings', { roomUUID: currentRoomUUID, userUUID });
                     });
-                    closeRoomBtn.after(editRoomBtn);
+                    sidebarMenu.appendChild(editRoomBtn);
                 }
                 editRoomBtn.style.display = 'block';
 
@@ -578,6 +640,7 @@
                     `<div class="swal2-content" style="margin: 5px;"><label><input type="checkbox" id="swal-input3" ${settings.isListed ? 'checked' : ''}> 顯示於清單</label></div>` +
                     '聊天室將於以下時間<b>`閒置`</b>後自動移除!<br>' +
                     `<select id="swal-input4" class="swal2-input" style="width: 80%; margin: 5px;">` +
+                    `<option value="1" ${settings.autoCloseMinutes === 1 ? 'selected' : ''}>Auto-close after 1 Minutes</option>` +
                     `<option value="30" ${settings.autoCloseMinutes === 30 ? 'selected' : ''}>Auto-close after 30 Minutes</option>` +
                     `<option value="60" ${settings.autoCloseMinutes === 60 ? 'selected' : ''}>Auto-close after 1 Hour</option>` +
                     `<option value="360" ${settings.autoCloseMinutes === 360 ? 'selected' : ''}>Auto-close after 6 Hours</option>` +
@@ -597,10 +660,10 @@
             }).then((result) => {
                 if (result.isConfirmed) {
                     if (result.value.roomName) {
-                        socket.emit('update room settings', { 
-                            roomUUID: currentRoomUUID, 
-                            userUUID: userUUID, 
-                            settings: result.value 
+                        socket.emit('update room settings', {
+                            roomUUID: currentRoomUUID,
+                            userUUID: userUUID,
+                            settings: result.value
                         });
                     }
                 }
@@ -695,6 +758,7 @@
                     '<div class="swal2-content" style="margin: 5px;"><label><input type="checkbox" id="swal-input3"> 顯示於清單</label></div>' +
                     '聊天室將於以下時間<b>`閒置`</b>後自動移除!<br>' +
                     '<select id="swal-input4" class="swal2-input" style="width: 80%; margin: 5px;">' +
+                    '<option value="1">Auto-close after 1 Minutes</option>' +
                     '<option value="30">Auto-close after 30 Minutes</option>' +
                     '<option value="60">Auto-close after 1 Hour</option>' +
                     '<option value="360">Auto-close after 6 Hours</option>' +
