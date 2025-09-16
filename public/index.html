@@ -204,6 +204,7 @@
                 <div id="sidebar">
                     <h5 id="room-name-title"></h5>
                     <button id="leave-room-btn" class="btn btn-sm btn-danger mb-2">Leave Room</button>
+                    <button id="enable-notifications-btn" class="btn btn-sm btn-info mb-2">Enable Notifications</button>
                     <!-- <button id="change-emoji-btn" class="btn btn-sm btn-info mb-2">Change Emoji</button> -->
                     <hr>
                     <b>Online Users</b>
@@ -269,7 +270,8 @@
         let userUUID = null;
         let myUser = null;
         let currentRoomUUID = null;
-        let isAutoRejoining = false;
+        let originalTitle = document.title;
+        let newMessageCount = 0;
 
         // --- UUID Generator ---
         function uuidv4() {
@@ -313,8 +315,7 @@
             // Auto-rejoin logic
             const roomUUIDFromHash = window.location.hash.substring(1);
             if (roomUUIDFromHash) {
-                isAutoRejoining = true;
-                socket.emit('join room', { roomUUID: roomUUIDFromHash, userName, userUUID });
+                socket.emit('check room status', roomUUIDFromHash);
             } else {
                 showLobby();
             }
@@ -408,12 +409,36 @@
 
             const userInfo = isMyMessage ? '' : `${message.user.emoji} ${message.user.name}`;
             let renderedContent = marked.parse(message.content.trim()); // 渲染 Markdown
-            //renderedContent = renderedContent.trim().replaceAll('\r\n', "<br>").replaceAll('\n', "<br>")
-            //const renderedContent = message.content;
 
             item.innerHTML = `<div class="user-info">${userInfo}</div><div class="message-content">${renderedContent}</div>`;
             messages.appendChild(item);
             messages.scrollTop = messages.scrollHeight;
+        }
+
+        // --- Notification Functions ---
+        function showDesktopNotification(userName, content) {
+            // 從內容中刪除 HTML 以獲得乾淨的通知正文
+            const tempDiv = document.createElement("div");
+            tempDiv.innerHTML = content;
+            const bodyText = tempDiv.textContent || tempDiv.innerText || "";
+
+            const notification = new Notification(`${userName} says:`, {
+                body: bodyText,
+                icon: '/images/chat.png' // 可選：確保此圖示存在
+            });
+        }
+
+        function handleNewMessage(message) {
+            addMessage(message);
+
+            if (!document.hasFocus()) {
+                newMessageCount++;
+                document.title = `(${newMessageCount}) ${originalTitle}`;
+
+                if (Notification.permission === "granted") {
+                    showDesktopNotification(message.user.name, message.content);
+                }
+            }
         }
 
         // --- Feature Setup ---
@@ -435,27 +460,41 @@
         // --- Socket Event Listeners ---
         socket.on('room list', updateRoomList);
 
-        socket.on('error message', (message) => {
-            if (isAutoRejoining && message === 'Incorrect password.') {
-                const roomUUIDFromHash = window.location.hash.substring(1);
+        socket.on('clear hash', () => {
+            window.location.hash = '';
+        });
+
+        socket.on('room status response', ({ roomUUID, isPublic }) => {
+            if (isPublic) {
+                socket.emit('join room', { roomUUID, userName, userUUID });
+            } else {
                 Swal.fire({
                     title: 'This room is private',
                     input: 'password',
                     inputPlaceholder: 'Enter password',
-                    showCancelButton: true
+                    showCancelButton: true,
+                    allowOutsideClick: false,
                 }).then((result) => {
                     if (result.isConfirmed) {
-                        socket.emit('join room', { roomUUID: roomUUIDFromHash, password: result.value, userName, userUUID });
+                        socket.emit('join room', { roomUUID, password: result.value, userName, userUUID });
+                    } else {
+                        // If user cancels, clear hash and go to lobby
+                        window.location.hash = '';
+                        showLobby();
                     }
                 });
-            } else {
-                Swal.fire('Error', message, 'error');
             }
-            isAutoRejoining = false; // Reset flag after handling
+        });
+
+        socket.on('generic success', (message) => {
+            Swal.fire('Success', message, 'success');
+        });
+
+        socket.on('error message', (message) => {
+            Swal.fire('Error', message, 'error');
         });
 
         socket.on('join success', ({ roomUUID, roomName, users, history, creator }) => {
-            isAutoRejoining = false; // Reset flag on success
             currentRoomUUID = roomUUID;
             window.location.hash = roomUUID;
             showChatRoom();
@@ -464,10 +503,29 @@
             messages.innerHTML = '';
             history.forEach(addMessage);
 
-            // Show/hide close room button
-            const closeRoomBtnContainer = document.getElementById('sidebar');
+            // Notification button setup
+            const enableNotificationsBtn = document.getElementById('enable-notifications-btn');
+            enableNotificationsBtn.addEventListener('click', () => {
+                if (!('Notification' in window)) {
+                    Swal.fire('Sorry', 'This browser does not support desktop notifications.', 'error');
+                    return;
+                }
+                Notification.requestPermission().then(permission => {
+                    if (permission === 'granted') {
+                        Swal.fire('Success!', 'Desktop notifications have been enabled.', 'success');
+                        new Notification('Notifications Enabled!', { body: 'You will now be notified of new messages.' });
+                    } else {
+                        Swal.fire('Info', 'You have not enabled desktop notifications.', 'info');
+                    }
+                });
+            });
+
+            // Creator-only buttons setup
             let closeRoomBtn = document.getElementById('close-room-btn');
+            let editRoomBtn = document.getElementById('edit-room-btn');
+
             if (creator === userUUID) {
+                // Create/Show Close Room button
                 if (!closeRoomBtn) {
                     closeRoomBtn = document.createElement('button');
                     closeRoomBtn.id = 'close-room-btn';
@@ -491,9 +549,66 @@
                     leaveRoomBtn.after(closeRoomBtn);
                 }
                 closeRoomBtn.style.display = 'block';
-            } else if (closeRoomBtn) {
-                closeRoomBtn.style.display = 'none';
+
+                // Create/Show Edit Settings button
+                if (!editRoomBtn) {
+                    editRoomBtn = document.createElement('button');
+                    editRoomBtn.id = 'edit-room-btn';
+                    editRoomBtn.className = 'btn btn-sm btn-secondary mt-2';
+                    editRoomBtn.textContent = 'Edit Settings';
+                    editRoomBtn.addEventListener('click', () => {
+                        socket.emit('get room settings', { roomUUID: currentRoomUUID, userUUID });
+                    });
+                    closeRoomBtn.after(editRoomBtn);
+                }
+                editRoomBtn.style.display = 'block';
+
+            } else {
+                if (closeRoomBtn) closeRoomBtn.style.display = 'none';
+                if (editRoomBtn) editRoomBtn.style.display = 'none';
             }
+        });
+
+        socket.on('room settings data', (settings) => {
+            Swal.fire({
+                title: 'Edit Room Settings',
+                html:
+                    `<input id="swal-input1" class="swal2-input" placeholder="Room Name" style="width: 80%; margin: 5px;" value="${settings.name}">` +
+                    `<input id="swal-input2" class="swal2-input" placeholder="Password (optional)" type="password" style="width: 80%; margin: 5px;" value="${settings.password || ''}">` +
+                    `<div class="swal2-content" style="margin: 5px;"><label><input type="checkbox" id="swal-input3" ${settings.isListed ? 'checked' : ''}> 顯示於清單</label></div>` +
+                    '聊天室將於以下時間<b>`閒置`</b>後自動移除!<br>' +
+                    `<select id="swal-input4" class="swal2-input" style="width: 80%; margin: 5px;">` +
+                    `<option value="30" ${settings.autoCloseMinutes === 30 ? 'selected' : ''}>Auto-close after 30 Minutes</option>` +
+                    `<option value="60" ${settings.autoCloseMinutes === 60 ? 'selected' : ''}>Auto-close after 1 Hour</option>` +
+                    `<option value="360" ${settings.autoCloseMinutes === 360 ? 'selected' : ''}>Auto-close after 6 Hours</option>` +
+                    `<option value="1440" ${settings.autoCloseMinutes === 1440 ? 'selected' : ''}>Auto-close after 24 Hours</option>` +
+                    `<option value="10080" ${settings.autoCloseMinutes === 10080 ? 'selected' : ''}>Auto-close after 7 Days</option>` +
+                    `<option value="43200" ${settings.autoCloseMinutes === 43200 ? 'selected' : ''}>Auto-close after 30 Days</option>` +
+                    '</select>',
+                focusConfirm: false,
+                preConfirm: () => {
+                    return {
+                        roomName: document.getElementById('swal-input1').value,
+                        password: document.getElementById('swal-input2').value,
+                        isListed: document.getElementById('swal-input3').checked,
+                        autoCloseMinutes: document.getElementById('swal-input4').value
+                    }
+                }
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    if (result.value.roomName) {
+                        socket.emit('update room settings', { 
+                            roomUUID: currentRoomUUID, 
+                            userUUID: userUUID, 
+                            settings: result.value 
+                        });
+                    }
+                }
+            });
+        });
+
+        socket.on('room settings updated', ({ roomName }) => {
+            roomNameTitle.textContent = roomName;
         });
 
         socket.on('room closed', (message) => {
@@ -504,7 +619,7 @@
         });
 
         socket.on('user list', updateUserList);
-        socket.on('chat message', addMessage);
+        socket.on('chat message', handleNewMessage);
 
         socket.on('online users count', (count) => {
             document.getElementById('online-users-count').textContent = count;
@@ -584,12 +699,9 @@
                     '<option value="60">Auto-close after 1 Hour</option>' +
                     '<option value="360">Auto-close after 6 Hours</option>' +
                     '<option value="1440" selected>Auto-close after 24 Hours</option>' +
-                    '<option value="1440" selected>Auto-close after 1 Day</option>' +
                     '<option value="10080">Auto-close after 7 Days</option>' +
                     '<option value="43200">Auto-close after 30 Days</option>' +
                     '</select>',
-
-
                 focusConfirm: false,
                 preConfirm: () => {
                     return [
@@ -631,7 +743,17 @@
             }
         });
 
+        window.addEventListener('focus', () => {
+            if (newMessageCount > 0) {
+                newMessageCount = 0;
+                document.title = originalTitle;
+            }
+        });
+
         // --- Run --- 
         init();
 
     </script>
+</body>
+
+</html>

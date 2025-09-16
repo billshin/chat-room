@@ -130,6 +130,18 @@ io.on('connection', (socket) => {
         emitOnlineUsersCount(); // Emit after user creates and joins a room
     });
 
+    socket.on('check room status', (roomUUID) => {
+        const room = rooms[roomUUID];
+        if (room) {
+            socket.emit('room status response', { roomUUID, isPublic: room.isPublic });
+        } else {
+            // If the room doesn't exist, treat it as an error and inform the user.
+            socket.emit('error message', `The room you are trying to join does not exist.`);
+            // Also remove the hash from their URL to prevent retries.
+            socket.emit('clear hash'); 
+        }
+    });
+
     socket.on('join room', ({ roomUUID, password, userName, userUUID: clientUUID }) => {
         const room = rooms[roomUUID];
         if (!room) {
@@ -169,6 +181,45 @@ io.on('connection', (socket) => {
         const room = rooms[roomUUID];
         if (room && room.creator === userUUID) {
             closeRoom(roomUUID);
+        }
+    });
+
+    socket.on('get room settings', ({ roomUUID, userUUID }) => {
+        const room = rooms[roomUUID];
+        if (room && room.creator === userUUID) {
+            socket.emit('room settings data', {
+                name: room.name,
+                password: room.password,
+                isListed: room.isListed,
+                autoCloseMinutes: room.autoCloseMinutes
+            });
+        } else {
+            socket.emit('error message', 'Not authorized to get room settings.');
+        }
+    });
+
+    socket.on('update room settings', ({ roomUUID, userUUID, settings }) => {
+        const room = rooms[roomUUID];
+        if (room && room.creator === userUUID) {
+            // Update room properties
+            room.name = settings.roomName;
+            room.password = settings.password || null;
+            room.isPublic = !settings.password;
+            room.isListed = settings.isListed;
+            room.autoCloseMinutes = parseInt(settings.autoCloseMinutes, 10);
+
+            saveData();
+
+            // Notify clients in the room of the name change
+            io.to(roomUUID).emit('room settings updated', { roomName: room.name });
+
+            // Update the lobby list for everyone
+            io.emit('room list', getRoomsList());
+
+            // Send success confirmation back to the creator
+            socket.emit('generic success', 'Room settings updated successfully!');
+        } else {
+            socket.emit('error message', 'You are not authorized to edit this room.');
         }
     });
 
