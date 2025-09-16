@@ -378,7 +378,8 @@
                 const activeElementId = document.activeElement.id;
 
                 roomList.innerHTML = '';
-                const visibleRooms = rooms.filter(room => room.isListed || room.creator === userUUID);
+                const joinedRooms = JSON.parse(localStorage.getItem('joinedRooms')) || [];
+                const visibleRooms = rooms.filter(room => room.isListed || room.creator === userUUID || joinedRooms.includes(room.uuid));
 
                 if (visibleRooms.length === 0) {
                     roomList.innerHTML = '<li class="list-group-item">No rooms available. Create one!</li>';
@@ -412,7 +413,7 @@
                         const now = new Date();
                         const diff = closingDate - now;
                         if (diff > 0) {
-                            closingTimeInfo = `<small class="text-danger ml-2"> | Closes in ${formatTimeDiff(diff)}</small>`;
+                            closingTimeInfo = `<small class="text-danger ml-2">  ${formatTimeDiff(diff)}</small>`;
                         }
                     }
 
@@ -555,6 +556,13 @@
         });
 
         socket.on('join success', ({ roomUUID, roomName, users, history, creator }) => {
+            // Store joined room UUID for lobby visibility
+            let joinedRooms = JSON.parse(localStorage.getItem('joinedRooms')) || [];
+            if (!joinedRooms.includes(roomUUID)) {
+                joinedRooms.push(roomUUID);
+                localStorage.setItem('joinedRooms', JSON.stringify(joinedRooms));
+            }
+
             currentRoomUUID = roomUUID;
             window.location.hash = roomUUID;
             showChatRoom();
