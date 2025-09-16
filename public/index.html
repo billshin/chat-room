@@ -11,6 +11,7 @@
     <link rel="stylesheet" href="/vendor/bootstrap.min.css">
     <link rel="stylesheet" href="/vendor/lightbox.min.css">
     <link rel="stylesheet" href="/vendor/sweetalert2.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/default.min.css">
 
 
     <style>
@@ -138,7 +139,7 @@
         }
 
         #form {
-            padding: 15px;
+            padding: 15px 15px 5px 15px; /* Reduced bottom padding */
             border-top: 1px solid #ddd;
             background: #f7f7f7;
         }
@@ -173,6 +174,21 @@
         #sidebar-menu-container .btn {
             width: 100%;
             margin: 0;
+        }
+
+        /* For highlight.js line numbers */
+        .hljs-ln-numbers {
+            text-align: center;
+            color: #ccc;
+            border-right: 1px solid #ccc;
+            vertical-align: top;
+            padding-right: 5px;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            -khtml-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
         }
     </style>
 </head>
@@ -237,6 +253,12 @@
                             <button type="submit" class="btn btn-primary">Send</button>
                         </div>
                     </form>
+                    <div style="background: #f7f7f7; padding: 0 15px 10px 15px;">
+                        <div class="custom-control custom-checkbox text-muted small">
+                            <input type="checkbox" class="custom-control-input" id="enter-sends-checkbox">
+                            <label class="custom-control-label" for="enter-sends-checkbox"></label>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -246,6 +268,8 @@
     <script src="/vendor/jquery.min.js"></script>
     <script src="/vendor/lightbox.min.js"></script>
     <script src="/vendor/sweetalert2.all.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/highlightjs-line-numbers.js@2.8.0/dist/highlightjs-line-numbers.min.js"></script>
     <script>
         lightbox.option({
             'fadeDuration': 300,
@@ -347,6 +371,7 @@
             lobbyUsername.textContent = userName;
 
             setupEmojiPicker();
+            setupEnterKeyBehavior();
 
             // Auto-rejoin logic
             const roomUUIDFromHash = window.location.hash.substring(1);
@@ -473,6 +498,13 @@
 
             item.innerHTML = `<div class="user-info">${userInfo}</div><div class="message-content">${renderedContent}</div>`;
             messages.appendChild(item);
+
+            // Highlight code blocks in the new message
+            item.querySelectorAll('pre code').forEach((block) => {
+                hljs.highlightElement(block);
+                hljs.lineNumbersBlock(block);
+            });
+
             messages.scrollTop = messages.scrollHeight;
         }
 
@@ -503,6 +535,31 @@
         }
 
         // --- Feature Setup ---
+        function setupEnterKeyBehavior() {
+            const checkbox = document.getElementById('enter-sends-checkbox');
+            const label = document.querySelector('label[for="enter-sends-checkbox"]');
+            
+            const updateLabel = (checked) => {
+                if (checked) {
+                    label.textContent = 'Enter to send (Shift+Enter for new line)';
+                } else {
+                    label.textContent = 'Shift+Enter to send (Enter for new line)';
+                }
+            };
+
+            // Load preference
+            let enterSends = localStorage.getItem('enterSends') !== 'false'; // default to true
+            checkbox.checked = enterSends;
+            updateLabel(enterSends);
+
+            // Add listener
+            checkbox.addEventListener('change', (e) => {
+                const isChecked = e.target.checked;
+                localStorage.setItem('enterSends', isChecked);
+                updateLabel(isChecked);
+            });
+        }
+
         function setupEmojiPicker() {
             const emojis = ['😀', '😁', '😂', '🤣', '😃', '😄', '😅', '😆', '😉', '😊', '😋', '😎', '😍', '😘', '😗', '😙', '😚', '🙂', '🤗', '🤔', '😐', '😑', '😶', '🙄', '😏', '😣', '😥', '😮', '🤐', '😯', '😪', '😫', '😴', '😌', '😛', '😜', '😝', '🤤', '😒', '😓', '😔', '😕', '🙃', '🤑', '😲', '☹️', '🙁', '😖', '😞', '😟', '😤', '😢', '😭', '😦', '😧', '😨', '😩', '🤯', '😬', '😰', '😱', '😳', '🤪', '😵', '😡', '😠', '🤬', '😷', '🤒', '🤕', '🤢', '🤮', '🤧', '😇', '🤠', '🤡', '🤥', '🤫', '🤭', '🧐', '🤓', '😈', '👿', '👍', '👎', '❤️', '💔', '🎉', '✨', '🔥', '💯'];
             emojis.forEach(emoji => {
@@ -809,9 +866,20 @@
 
         // 監聽 textarea 的按鍵事件
         input.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault(); // 防止換行
-                form.dispatchEvent(new Event('submit')); // 模擬提交表單
+            if (e.key !== 'Enter') return;
+
+            const enterSends = document.getElementById('enter-sends-checkbox').checked;
+
+            if (enterSends) {
+                if (!e.shiftKey) {
+                    e.preventDefault();
+                    form.dispatchEvent(new Event('submit'));
+                }
+            } else {
+                if (e.shiftKey) {
+                    e.preventDefault();
+                    form.dispatchEvent(new Event('submit'));
+                }
             }
         });
 
