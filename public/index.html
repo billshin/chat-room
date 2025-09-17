@@ -270,10 +270,10 @@
                             <button type="button" id="emoji-btn" class="btn btn-outline-secondary">😀</button>
                         </div>
                         <div id="emoji-picker" class="emoji-picker"></div>
-                        <!-- <input id="input" class="form-control" autocomplete="off" placeholder="Type your message or paste an image..."> -->
                         <textarea id="input" class="form-control" rows="2" autocomplete="off"
                             placeholder="Type your message or paste an image..."></textarea>
                         <div class="input-group-append">
+                            <button type="button" id="send-code-btn" class="btn btn-secondary">Code</button>
                             <button type="submit" class="btn btn-primary">Send</button>
                         </div>
                     </form>
@@ -344,6 +344,7 @@
         const input = document.getElementById('input');
         const emojiBtn = document.getElementById('emoji-btn');
         const emojiPicker = document.getElementById('emoji-picker');
+        const sendCodeBtn = document.getElementById('send-code-btn');
 
         // App state
         let userName = null;
@@ -401,6 +402,15 @@
                 showLobby();
             }
         }
+
+        sendCodeBtn.addEventListener('click', () => {
+            const messageContent = input.value.trim();
+            if (messageContent) {
+                const codeMessage = `\`\`\`\n${messageContent}\n\`\`\``; // Wrap content in triple backticks
+                socket.emit('chat message', codeMessage);
+                input.value = '';
+            }
+        });
 
         // --- View Switching ---
         function showLobby() {
@@ -843,7 +853,7 @@
             }
         });
 
-      
+
 
         document.addEventListener('click', (e) => {
             if (e.target !== emojiBtn && !emojiPicker.contains(e.target)) {
