@@ -11,7 +11,7 @@
     <link rel="stylesheet" href="/vendor/bootstrap.min.css">
     <link rel="stylesheet" href="/vendor/lightbox.min.css">
     <link rel="stylesheet" href="/vendor/sweetalert2.min.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/default.min.css">
+    <link rel="stylesheet" href="/vendor/highlight.css">
 
 
     <style>
@@ -139,7 +139,8 @@
         }
 
         #form {
-            padding: 15px 15px 5px 15px; /* Reduced bottom padding */
+            padding: 15px 15px 5px 15px;
+            /* Reduced bottom padding */
             border-top: 1px solid #ddd;
             background: #f7f7f7;
         }
@@ -147,22 +148,39 @@
         .emoji-picker {
             display: none;
             position: absolute;
-            bottom: 65px;
-            /* Position above the input form */
-            left: 15px;
-            background: white;
+            background: #fff;
             border: 1px solid #ccc;
-            border-radius: 5px;
+            border-radius: 8px;
             padding: 10px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
-            z-index: 100;
-            width: 280px;
+            max-height: 300px;
+            overflow-y: auto;
+            z-index: 1000;
+            top: -310px;
+            /* 調整這裡，將位置向上移動 */
+            left: 0;
+            /* 確保它與按鈕對齊 */
+        }
+
+        .emoji-category {
+            margin-bottom: 15px;
+        }
+
+        .emoji-category h5 {
+            margin: 0 0 10px;
+            font-size: 14px;
+            color: #555;
+        }
+
+        .emoji-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
         }
 
         .emoji {
             cursor: pointer;
-            font-size: 24px;
-            margin: 5px;
+            font-size: 20px;
+            line-height: 1;
         }
 
         #sidebar-menu-container {
@@ -241,6 +259,12 @@
                 </div>
                 <div id="messages-area">
                     <div id="messages"></div>
+                    <div style="background: #f7f7f7; padding: 0 15px 10px 15px;">
+                        <div class="custom-control custom-checkbox text-muted small">
+                            <input type="checkbox" class="custom-control-input" id="enter-sends-checkbox">
+                            <label class="custom-control-label" for="enter-sends-checkbox"></label>
+                        </div>
+                    </div>
                     <form id="form" action="" class="input-group position-relative">
                         <div class="input-group-prepend">
                             <button type="button" id="emoji-btn" class="btn btn-outline-secondary">😀</button>
@@ -253,12 +277,7 @@
                             <button type="submit" class="btn btn-primary">Send</button>
                         </div>
                     </form>
-                    <div style="background: #f7f7f7; padding: 0 15px 10px 15px;">
-                        <div class="custom-control custom-checkbox text-muted small">
-                            <input type="checkbox" class="custom-control-input" id="enter-sends-checkbox">
-                            <label class="custom-control-label" for="enter-sends-checkbox"></label>
-                        </div>
-                    </div>
+
                 </div>
             </div>
         </div>
@@ -269,7 +288,8 @@
     <script src="/vendor/lightbox.min.js"></script>
     <script src="/vendor/sweetalert2.all.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/highlightjs-line-numbers.js@2.8.0/dist/highlightjs-line-numbers.min.js"></script>
+    <script
+        src="https://cdn.jsdelivr.net/npm/highlightjs-line-numbers.js@2.8.0/dist/highlightjs-line-numbers.min.js"></script>
     <script>
         lightbox.option({
             'fadeDuration': 300,
@@ -538,7 +558,7 @@
         function setupEnterKeyBehavior() {
             const checkbox = document.getElementById('enter-sends-checkbox');
             const label = document.querySelector('label[for="enter-sends-checkbox"]');
-            
+
             const updateLabel = (checked) => {
                 if (checked) {
                     label.textContent = 'Enter to send (Shift+Enter for new line)';
@@ -574,6 +594,57 @@
                 emojiPicker.appendChild(span);
             });
         }
+
+        // 加載 emoji.json 並生成表情選擇器
+        async function loadEmojis() {
+            try {
+                const response = await fetch('/json/emoji.json'); // 確保路徑正確
+
+                const emojiData = await response.json();
+                console.log(emojiData)
+                // 清空 emoji-picker
+                emojiPicker.innerHTML = '';
+
+                // 遍歷每個類型，生成分類和表情
+                emojiData.forEach(category => {
+                    const categoryDiv = document.createElement('div');
+                    categoryDiv.classList.add('emoji-category');
+
+                    // 類型標題
+                    const title = document.createElement('h5');
+                    title.textContent = category.type;
+                    categoryDiv.appendChild(title);
+
+                    // 表情列表
+                    const emojiList = document.createElement('div');
+                    emojiList.classList.add('emoji-list');
+                    category.emoji.forEach(emoji => {
+                        const emojiSpan = document.createElement('span');
+                        emojiSpan.classList.add('emoji');
+                        emojiSpan.textContent = emoji;
+                        emojiSpan.addEventListener('click', () => {
+                            input.value += emoji; // 點擊表情時插入到輸入框
+                        });
+                        emojiList.appendChild(emojiSpan);
+                    });
+
+                    categoryDiv.appendChild(emojiList);
+                    emojiPicker.appendChild(categoryDiv);
+                });
+            } catch (error) {
+                console.error('Failed to load emojis:', error);
+            }
+        }
+
+        // 初始化表情選擇器
+        emojiBtn.addEventListener('click', () => {
+            if (emojiPicker.style.display === 'block') {
+                emojiPicker.style.display = 'none';
+            } else {
+                emojiPicker.style.display = 'block';
+                loadEmojis(); // 每次打開時加載表情
+            }
+        });
 
         // --- Socket Event Listeners ---
         socket.on('room list', updateRoomList);
@@ -772,10 +843,7 @@
             }
         });
 
-        emojiBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            emojiPicker.style.display = emojiPicker.style.display === 'block' ? 'none' : 'block';
-        });
+      
 
         document.addEventListener('click', (e) => {
             if (e.target !== emojiBtn && !emojiPicker.contains(e.target)) {
